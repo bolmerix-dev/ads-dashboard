@@ -6,7 +6,7 @@
 <title>META ADS — Performance Terminal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=Inter:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <style>
@@ -122,9 +122,10 @@
     margin-bottom: 8px;
   }
   .kpi-value {
-    font-family: 'Fraunces', serif;
-    font-size: 31px; font-weight: 600;
-    letter-spacing: -0.02em;
+    font-family: 'Inter', sans-serif;
+    font-size: 30px; font-weight: 700;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
   }
   .kpi-delta {
     font-size: 11px; margin-top: 6px;
@@ -132,6 +133,10 @@
   }
   .kpi-delta.up { color: var(--good); }
   .kpi-delta.down { color: var(--bad); }
+  .kpi-desc {
+    font-size: 11px; margin-top: 6px;
+    color: var(--ink-faint); line-height: 1.4;
+  }
   .kpi.alert::before {
     content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
     background: var(--bad);
@@ -169,8 +174,9 @@
     text-align: right; font-size: 12.5px; color: var(--ink-dim);
   }
   .chart-stats .now {
-    font-family: 'Fraunces', serif; font-size: 20px;
+    font-family: 'Inter', sans-serif; font-size: 19px; font-weight: 700;
     color: var(--ink); display: block;
+    font-variant-numeric: tabular-nums;
   }
   .canvas-wrap { position: relative; height: 220px; }
   .alert-badge {
@@ -184,7 +190,7 @@
   /* ============ TABLE ============ */
   .table-wrap {
     position: relative; z-index: 1;
-    padding: 32px 36px; border-top: 1px solid var(--line);
+    padding: 28px 36px; border-bottom: 1px solid var(--line);
   }
   .table-wrap h2 {
     font-family: 'Fraunces', serif; font-weight: 300;
@@ -212,6 +218,9 @@
   tr.alert td:first-child { border-left: 2px solid var(--bad); }
   tr.alert td { color: var(--bad); }
   .name-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .st-on { color: var(--good); font-weight: 700; white-space: nowrap; }
+  .st-off { color: var(--ink-faint); white-space: nowrap; }
+  tr.alert .st-on { color: var(--good); }
 
   /* ============ LOADING / EMPTY ============ */
   .state {
@@ -289,8 +298,6 @@
 </div>
 
 <div class="kpi-row" id="kpiRow"></div>
-<div class="grid" id="grid"></div>
-
 <div class="table-wrap">
   <h2>상세 목록 <span style="color:var(--ink-faint);font-size:13px;font-style:normal;font-family:'JetBrains Mono',monospace;letter-spacing:.1em;">/ 광고비순 정렬</span></h2>
   <div style="overflow-x:auto;">
@@ -300,6 +307,8 @@
     </table>
   </div>
 </div>
+
+<div class="grid" id="grid"></div>
 
 <div class="help">
   <b>How to read this:</b> 각 차트의 점선은 선택 구간의 평균선이고, 연한 곡선은 7일 이동평균입니다.
@@ -325,14 +334,14 @@ const SHEETS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQrRmqLn
 // 색상
 // ============================================================
 const METRICS = [
-  { key: 'spend',           label: '광고비',         fmt: 'currency', worse: null,   color: '#b07d3f' },
-  { key: 'impressions',     label: '노출',   fmt: 'int',      worse: null,   color: '#8a8270' },
-  { key: 'clicks',          label: '클릭',        fmt: 'int',      worse: null,   color: '#8a8270' },
-  { key: 'conversions',     label: '전환',   fmt: 'int',      worse: 'down', color: '#3f8a4d' },
-  { key: 'ctr',             label: 'CTR',           fmt: 'percent',  worse: 'down', color: '#2e7d7d', alert: true },
-  { key: 'cpa',             label: 'CPA',           fmt: 'currency', worse: 'up',   color: '#cc4437', alert: true },
-  { key: 'roas',            label: 'ROAS',          fmt: 'ratio',    worse: 'down', color: '#3f8a4d', alert: true },
-  { key: 'frequency',       label: '빈도',     fmt: 'ratio',    worse: 'up',   color: '#c2922a', alert: true },
+  { key: 'spend',           label: '광고비',         fmt: 'currency', worse: null,   color: '#b07d3f', desc: '기간 내 총 지출' },
+  { key: 'impressions',     label: '노출',   fmt: 'int',      worse: null,   color: '#8a8270', desc: '광고가 보여진 횟수' },
+  { key: 'clicks',          label: '클릭',        fmt: 'int',      worse: null,   color: '#8a8270', desc: '광고를 누른 횟수' },
+  { key: 'conversions',     label: '전환',   fmt: 'int',      worse: 'down', color: '#3f8a4d', desc: '구매 완료 건수' },
+  { key: 'ctr',             label: 'CTR',           fmt: 'percent',  worse: 'down', color: '#2e7d7d', alert: true, desc: '노출 대비 클릭 비율' },
+  { key: 'cpa',             label: 'CPA',           fmt: 'currency', worse: 'up',   color: '#cc4437', alert: true, desc: '구매 1건당 쓴 광고비' },
+  { key: 'roas',            label: 'ROAS',          fmt: 'ratio',    worse: 'down', color: '#3f8a4d', alert: true, desc: '광고비 1원당 매출 (1.0 = 본전)' },
+  { key: 'frequency',       label: '빈도',     fmt: 'ratio',    worse: 'up',   color: '#c2922a', alert: true, desc: '1인당 평균 노출 횟수' },
 ];
 
 // ============================================================
@@ -407,6 +416,7 @@ async function loadData() {
         ...r,
         date: normDate(r.date),
         level: String(r.level).trim().toLowerCase(),
+        status: String(r.status || '').trim(),
         spend: +r.spend || 0,
         impressions: +r.impressions || 0,
         clicks: +r.clicks || 0,
@@ -563,6 +573,7 @@ function renderKPIs(daily) {
         <div class="kpi-label">${m.label}${isAlert ? '<span class="alert-badge">경고</span>' : ''}</div>
         <div class="kpi-value">${fmt(cur, m.fmt)}</div>
         <div class="kpi-delta ${cls}">${delta || '—'}</div>
+        <div class="kpi-desc">${m.desc || ''}</div>
       </div>
     `;
   }).join('');
@@ -578,7 +589,7 @@ function renderCharts(daily) {
       <div class="chart-head">
         <div>
           <div class="chart-title"><span class="key">/</span>${m.label}</div>
-          <div class="chart-sub">${m.worse === 'up' ? '낮을수록 좋음' : m.worse === 'down' ? '높을수록 좋음' : '규모'}</div>
+          <div class="chart-sub">${m.desc || ''} · ${m.worse === 'up' ? '낮을수록 좋음' : m.worse === 'down' ? '높을수록 좋음' : '규모'}</div>
         </div>
         <div class="chart-stats">
           <span class="now">${fmt(daily[daily.length-1][m.key], m.fmt)}</span>
@@ -679,10 +690,11 @@ function renderTable(rows) {
     const k = r.entity_id;
     if (!byEntity[k]) {
       byEntity[k] = { entity_name: r.entity_name, campaign_name: r.campaign_name,
-        adset_name: r.adset_name, spend:0, impressions:0, clicks:0,
+        adset_name: r.adset_name, status: '', spend:0, impressions:0, clicks:0,
         conversions:0, conversion_value:0, reach_max:0, freq_w:0, freq_n:0 };
     }
     const e = byEntity[k];
+    if (r.status) e.status = r.status;
     e.spend += r.spend; e.impressions += r.impressions; e.clicks += r.clicks;
     e.conversions += r.conversions; e.conversion_value += r.conversion_value;
     e.reach_max = Math.max(e.reach_max, r.reach);
@@ -701,6 +713,7 @@ function renderTable(rows) {
   
   const cols = [
     {k:'entity_name', label:'이름', num:false},
+    {k:'status',      label:'상태', num:false},
     {k:'spend',       label:'광고비', num:true, fmt:'currency'},
     {k:'impressions', label:'노출', num:true, fmt:'int'},
     {k:'clicks',      label:'클릭', num:true, fmt:'int'},
@@ -724,9 +737,18 @@ function renderTable(rows) {
     let alert = false;
     if (medCPA && e.cpa > 0 && e.cpa > medCPA * (1 + state.threshold/100)) alert = true;
     if (medROAS && e.roas > 0 && e.roas < medROAS * (1 - state.threshold/100)) alert = true;
-    return `<tr class="${alert?'alert':''}">` + cols.map(c =>
-      `<td class="${c.num?'num':''} ${c.k==='entity_name'?'name-cell':''}" title="${c.k==='entity_name'?(e.entity_name||''):''}">${c.num ? fmt(e[c.k], c.fmt) : (e[c.k] || '—')}</td>`
-    ).join('') + '</tr>';
+    return `<tr class="${alert?'alert':''}">` + cols.map(c => {
+      let cell;
+      if (c.k === 'status') {
+        const on = e.status === 'ACTIVE';
+        cell = e.status
+          ? `<span class="${on?'st-on':'st-off'}">${on?'● ON':'○ OFF'}</span>`
+          : '—';
+      } else {
+        cell = c.num ? fmt(e[c.k], c.fmt) : (e[c.k] || '—');
+      }
+      return `<td class="${c.num?'num':''} ${c.k==='entity_name'?'name-cell':''}" title="${c.k==='entity_name'?(e.entity_name||''):''}">${cell}</td>`;
+    }).join('') + '</tr>';
   }).join('');
   
   // 정렬 클릭
