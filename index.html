@@ -16,8 +16,8 @@
     --panel-2: #eae3d4;
     --line: #ddd4c3;
     --ink: #1f1c17;
-    --ink-dim: #6b6457;
-    --ink-faint: #97907f;
+    --ink-dim: #57503e;
+    --ink-faint: #7d7560;
     --accent: #b07d3f;
     --warn: #c2922a;
     --bad: #cc4437;
@@ -78,7 +78,7 @@
   }
   .ctrl-group { display: flex; align-items: center; gap: 8px; }
   .ctrl-label {
-    font-size: 10px; text-transform: uppercase;
+    font-size: 11px; text-transform: uppercase;
     letter-spacing: 0.15em; color: var(--ink-faint);
   }
   .btn {
@@ -117,13 +117,13 @@
     position: relative;
   }
   .kpi-label {
-    font-size: 10px; text-transform: uppercase;
+    font-size: 11.5px; text-transform: uppercase;
     letter-spacing: 0.18em; color: var(--ink-faint);
     margin-bottom: 8px;
   }
   .kpi-value {
     font-family: 'Fraunces', serif;
-    font-size: 28px; font-weight: 400;
+    font-size: 31px; font-weight: 600;
     letter-spacing: -0.02em;
   }
   .kpi-delta {
@@ -161,12 +161,12 @@
     color: var(--accent); margin-right: 4px;
   }
   .chart-sub {
-    font-size: 10px; text-transform: uppercase;
+    font-size: 11px; text-transform: uppercase;
     letter-spacing: 0.15em; color: var(--ink-faint);
     margin-top: 2px;
   }
   .chart-stats {
-    text-align: right; font-size: 11px; color: var(--ink-dim);
+    text-align: right; font-size: 12.5px; color: var(--ink-dim);
   }
   .chart-stats .now {
     font-family: 'Fraunces', serif; font-size: 20px;
@@ -192,11 +192,11 @@
   }
   table {
     width: 100%; border-collapse: collapse;
-    font-size: 12px;
+    font-size: 13px;
   }
   th {
     text-align: left; padding: 10px 12px;
-    font-size: 10px; text-transform: uppercase;
+    font-size: 11px; text-transform: uppercase;
     letter-spacing: 0.15em; color: var(--ink-faint);
     border-bottom: 1px solid var(--line);
     cursor: pointer; user-select: none;
@@ -244,46 +244,46 @@
   <div>
     <div class="brand"><span>META</span> ads <em>terminal</em></div>
     <div style="font-size:11px;color:var(--ink-faint);letter-spacing:.1em;margin-top:4px;">
-      PERFORMANCE MONITORING / ANALYSIS
+      광고 성과 모니터링 / 분석
     </div>
   </div>
   <div class="meta">
-    <div><span class="live"></span>LIVE FEED</div>
+    <div><span class="live"></span>실시간 연동</div>
     <div id="lastUpdate" style="margin-top:4px;">—</div>
   </div>
 </header>
 
 <div class="controls">
   <div class="ctrl-group">
-    <span class="ctrl-label">Range</span>
+    <span class="ctrl-label">기간</span>
     <button class="btn preset" data-days="7">7D</button>
     <button class="btn preset active" data-days="14">14D</button>
     <button class="btn preset" data-days="30">30D</button>
     <button class="btn preset" data-days="90">90D</button>
   </div>
   <div class="ctrl-group">
-    <span class="ctrl-label">From</span>
+    <span class="ctrl-label">시작</span>
     <input type="date" id="dateFrom">
-    <span class="ctrl-label">To</span>
+    <span class="ctrl-label">종료</span>
     <input type="date" id="dateTo">
   </div>
   <div class="ctrl-group">
-    <span class="ctrl-label">Level</span>
+    <span class="ctrl-label">단위</span>
     <select id="levelSelect">
-      <option value="campaign">Campaign</option>
-      <option value="adset">Ad Set</option>
-      <option value="ad">Ad</option>
+      <option value="campaign">캠페인</option>
+      <option value="adset">광고세트</option>
+      <option value="ad">광고</option>
     </select>
   </div>
   <div class="ctrl-group">
-    <span class="ctrl-label">Filter</span>
-    <input type="text" id="entityFilter" placeholder="all entities">
+    <span class="ctrl-label">필터</span>
+    <input type="text" id="entityFilter" placeholder="전체 보기">
   </div>
   <label class="toggle">
-    <input type="checkbox" id="toggleMA" checked> 7-day moving avg
+    <input type="checkbox" id="toggleMA" checked> 7일 이동평균
   </label>
   <div class="ctrl-group">
-    <span class="ctrl-label">Alert ±%</span>
+    <span class="ctrl-label">경고 기준 ±%</span>
     <input type="number" id="threshold" value="20" min="5" max="100" step="5">
   </div>
 </div>
@@ -292,7 +292,7 @@
 <div class="grid" id="grid"></div>
 
 <div class="table-wrap">
-  <h2>Entities <span style="color:var(--ink-faint);font-size:13px;font-style:normal;font-family:'JetBrains Mono',monospace;letter-spacing:.1em;">/ SORTED BY SPEND</span></h2>
+  <h2>상세 목록 <span style="color:var(--ink-faint);font-size:13px;font-style:normal;font-family:'JetBrains Mono',monospace;letter-spacing:.1em;">/ 광고비순 정렬</span></h2>
   <div style="overflow-x:auto;">
     <table id="entityTable">
       <thead><tr id="tableHead"></tr></thead>
@@ -325,14 +325,14 @@ const SHEETS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQrRmqLn
 // 색상
 // ============================================================
 const METRICS = [
-  { key: 'spend',           label: 'Spend',         fmt: 'currency', worse: null,   color: '#b07d3f' },
-  { key: 'impressions',     label: 'Impressions',   fmt: 'int',      worse: null,   color: '#8a8270' },
-  { key: 'clicks',          label: 'Clicks',        fmt: 'int',      worse: null,   color: '#8a8270' },
-  { key: 'conversions',     label: 'Conversions',   fmt: 'int',      worse: 'down', color: '#3f8a4d' },
+  { key: 'spend',           label: '광고비',         fmt: 'currency', worse: null,   color: '#b07d3f' },
+  { key: 'impressions',     label: '노출',   fmt: 'int',      worse: null,   color: '#8a8270' },
+  { key: 'clicks',          label: '클릭',        fmt: 'int',      worse: null,   color: '#8a8270' },
+  { key: 'conversions',     label: '전환',   fmt: 'int',      worse: 'down', color: '#3f8a4d' },
   { key: 'ctr',             label: 'CTR',           fmt: 'percent',  worse: 'down', color: '#2e7d7d', alert: true },
   { key: 'cpa',             label: 'CPA',           fmt: 'currency', worse: 'up',   color: '#cc4437', alert: true },
   { key: 'roas',            label: 'ROAS',          fmt: 'ratio',    worse: 'down', color: '#3f8a4d', alert: true },
-  { key: 'frequency',       label: 'Frequency',     fmt: 'ratio',    worse: 'up',   color: '#c2922a', alert: true },
+  { key: 'frequency',       label: '빈도',     fmt: 'ratio',    worse: 'up',   color: '#c2922a', alert: true },
 ];
 
 // ============================================================
@@ -422,7 +422,7 @@ async function loadData() {
       }));
     
     document.getElementById('lastUpdate').textContent =
-      'UPDATED · ' + new Date().toLocaleString('ko-KR');
+      '업데이트 · ' + new Date().toLocaleString('ko-KR');
 
     if (state.raw.length === 0) {
       document.getElementById('emptyState').style.display = 'block';
@@ -560,7 +560,7 @@ function renderKPIs(daily) {
     }
     return `
       <div class="kpi ${isAlert ? 'alert' : ''}">
-        <div class="kpi-label">${m.label}${isAlert ? '<span class="alert-badge">ALERT</span>' : ''}</div>
+        <div class="kpi-label">${m.label}${isAlert ? '<span class="alert-badge">경고</span>' : ''}</div>
         <div class="kpi-value">${fmt(cur, m.fmt)}</div>
         <div class="kpi-delta ${cls}">${delta || '—'}</div>
       </div>
@@ -578,11 +578,11 @@ function renderCharts(daily) {
       <div class="chart-head">
         <div>
           <div class="chart-title"><span class="key">/</span>${m.label}</div>
-          <div class="chart-sub">${m.worse === 'up' ? 'lower is better' : m.worse === 'down' ? 'higher is better' : 'volume'}</div>
+          <div class="chart-sub">${m.worse === 'up' ? '낮을수록 좋음' : m.worse === 'down' ? '높을수록 좋음' : '규모'}</div>
         </div>
         <div class="chart-stats">
           <span class="now">${fmt(daily[daily.length-1][m.key], m.fmt)}</span>
-          avg ${fmt(daily.reduce((a,d)=>a+d[m.key],0)/daily.length, m.fmt)}
+          평균 ${fmt(daily.reduce((a,d)=>a+d[m.key],0)/daily.length, m.fmt)}
         </div>
       </div>
       <div class="canvas-wrap"><canvas id="chart-${m.key}"></canvas></div>
@@ -619,7 +619,7 @@ function renderCharts(daily) {
             pointHoverRadius: 6,
           },
           ...(state.showMA ? [{
-            label: '7-day MA',
+            label: '7일 이동평균',
             data: mavg,
             borderColor: '#1f1c17',
             borderWidth: 1,
@@ -653,13 +653,13 @@ function renderCharts(daily) {
         scales: {
           x: {
             grid: { color: '#e9e1d1' },
-            ticks: { color: '#97907f', font: { family: "'JetBrains Mono', monospace", size: 10 }, maxRotation: 0 },
+            ticks: { color: '#57503e', font: { family: "'JetBrains Mono', monospace", size: 11.5 }, maxRotation: 0 },
           },
           y: {
             grid: { color: '#e9e1d1' },
             ticks: {
-              color: '#97907f',
-              font: { family: "'JetBrains Mono', monospace", size: 10 },
+              color: '#57503e',
+              font: { family: "'JetBrains Mono', monospace", size: 11.5 },
               callback: v => fmt(v, m.fmt),
             },
           },
@@ -700,16 +700,16 @@ function renderTable(rows) {
   entities.sort((a, b) => ((a[sortKey] || 0) - (b[sortKey] || 0)) * sortDir);
   
   const cols = [
-    {k:'entity_name', label:'Name', num:false},
-    {k:'spend',       label:'Spend', num:true, fmt:'currency'},
-    {k:'impressions', label:'Imp', num:true, fmt:'int'},
-    {k:'clicks',      label:'Clicks', num:true, fmt:'int'},
+    {k:'entity_name', label:'이름', num:false},
+    {k:'spend',       label:'광고비', num:true, fmt:'currency'},
+    {k:'impressions', label:'노출', num:true, fmt:'int'},
+    {k:'clicks',      label:'클릭', num:true, fmt:'int'},
     {k:'ctr',         label:'CTR', num:true, fmt:'percent'},
     {k:'cpc',         label:'CPC', num:true, fmt:'currency'},
-    {k:'conversions', label:'Conv', num:true, fmt:'int'},
+    {k:'conversions', label:'전환', num:true, fmt:'int'},
     {k:'cpa',         label:'CPA', num:true, fmt:'currency'},
     {k:'roas',        label:'ROAS', num:true, fmt:'ratio'},
-    {k:'frequency',   label:'Freq', num:true, fmt:'ratio'},
+    {k:'frequency',   label:'빈도', num:true, fmt:'ratio'},
   ];
   document.getElementById('tableHead').innerHTML =
     cols.map(c => `<th class="${c.num?'num':''}" data-key="${c.k}">${c.label}${sortKey===c.k?(sortDir<0?' ↓':' ↑'):''}</th>`).join('');
@@ -794,4 +794,3 @@ loadData();
 </script>
 </body>
 </html>
-
