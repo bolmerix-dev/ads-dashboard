@@ -137,6 +137,9 @@
     font-size: 11px; margin-top: 6px;
     color: var(--ink-faint); line-height: 1.4;
   }
+  .kpi-delta .vs {
+    color: var(--ink-faint); font-size: 10px; margin-left: 2px;
+  }
   .kpi.alert::before {
     content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
     background: var(--bad);
@@ -525,6 +528,15 @@ function detectAnomalies(values, mavg, threshold, worseDir) {
 // RENDER
 // ============================================================
 function render() {
+  // 날짜 무관, 레벨+필터만 적용 (이전 기간 비교용)
+  const rowsAll = state.raw.filter(r => {
+    if (r.level !== state.level) return false;
+    if (state.entityFilter) {
+      const f = state.entityFilter.toLowerCase();
+      if (!(r.entity_name || '').toLowerCase().includes(f)) return false;
+    }
+    return true;
+  });
   const rows = getFilteredRows();
   const daily = aggregateByDate(rows);
   if (daily.length === 0) {
@@ -534,20 +546,51 @@ function render() {
     document.getElementById('tableBody').innerHTML = '';
     return;
   }
-  renderKPIs(daily);
+  renderKPIs(daily, rowsAll);
   renderCharts(daily);
   renderTable(rows);
 }
 
-// --- KPI 카드 ---
-function renderKPIs(daily) {
-  const last = daily[daily.length - 1];
-  const prev = daily[daily.length - 2];
+// --- 기간 합계/파생지표 계산 ---
+function sumRange(rows, from, to) {
+  const t = { spend:0, impressions:0, clicks:0, conversions:0, conversion_value:0, freq_w:0, freq_n:0, days:0 };
+  const seen = new Set();
+  for (const r of rows) {
+    if (r.date < from || r.date > to) continue;
+    t.spend += r.spend; t.impressions += r.impressions; t.clicks += r.clicks;
+    t.conversions += r.conversions; t.conversion_value += r.conversion_value;
+    if (r.frequency > 0) { t.freq_w += r.frequency * r.impressions; t.freq_n += r.impressions; }
+    seen.add(r.date);
+  }
+  t.days = seen.size;
+  t.cpa = t.conversions > 0 ? t.spend / t.conversions : 0;
+  t.roas = t.spend > 0 ? t.conversion_value / t.spend : 0;
+  t.ctr = t.impressions > 0 ? (t.clicks / t.impressions) * 100 : 0;
+  t.frequency = t.freq_n > 0 ? t.freq_w / t.freq_n : 0;
+  return t;
+}
+
+function shiftDate(s, days) {
+  const d = new Date(s + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+// --- KPI 카드: 선택 기간 합계 + 직전 동일 기간 대비 ---
+function renderKPIs(daily, rowsAll) {
+  const from = state.dateFrom || daily[0].date;
+  const to = state.dateTo || daily[daily.length - 1].date;
+  const span = Math.round((new Date(to + 'T00:00:00') - new Date(from + 'T00:00:00')) / 86400000) + 1;
+  const prevTo = shiftDate(from, -1);
+  const prevFrom = shiftDate(prevTo, -(span - 1));
+  const curT = sumRange(rowsAll, from, to);
+  const prevT = sumRange(rowsAll, prevFrom, prevTo);
+
   const kpiKeys = ['spend','conversions','cpa','roas','ctr','frequency'];
   const html = kpiKeys.map(k => {
     const m = METRICS.find(x => x.key === k);
-    const cur = last[k];
-    const prv = prev ? prev[k] : null;
+    const cur = curT[k];
+    const prv = prevT.days > 0 ? prevT[k] : null;
     let delta = '', cls = '';
     if (prv != null && prv > 0) {
       const pct = ((cur - prv) / prv) * 100;
@@ -558,7 +601,7 @@ function renderKPIs(daily) {
       else if (m.worse === 'down') good = pct > 0;
       else good = pct >= 0;
       cls = good ? 'up' : 'down';
-      delta = arrow + ' ' + Math.abs(pct).toFixed(1) + '%';
+      delta = arrow + ' ' + Math.abs(pct).toFixed(1) + '% <span class="vs">직전 ' + span + '일 대비</span>';
     }
     // alert 판정: 마지막 값이 7일 평균 대비 임계치 벗어남
     let isAlert = false;
