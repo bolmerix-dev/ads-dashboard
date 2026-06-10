@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>META ADS — Performance Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<style>
+  :root {
+    --bg: #faf6ef;
+    --panel: #f1ebe0;
+    --panel-2: #eae3d4;
+    --line: #ddd4c3;
+    --ink: #1f1c17;
+    --ink-dim: #6b6457;
+    --ink-faint: #97907f;
+    --accent: #b07d3f;
+    --warn: #c2922a;
+    --bad: #cc4437;
+    --good: #3f8a4d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: radial-gradient(circle at 1px 1px, rgba(31,28,23,.05) 1px, transparent 0);
+    background-size: 24px 24px;
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ============ HEADER ============ */
+  header {
+    position: relative; z-index: 1;
+    padding: 32px 36px 20px;
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: flex-end;
+    flex-wrap: wrap; gap: 16px;
+  }
+  .brand {
+    font-family: 'Fraunces', serif;
+    font-weight: 300; font-size: 32px;
+    letter-spacing: -0.02em;
+    font-style: italic;
+  }
+  .brand span { font-weight: 800; font-style: normal; }
+  .meta {
+    text-align: right;
+    color: var(--ink-dim);
+    font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.15em;
+  }
+  .meta .live {
+    display: inline-block; width: 6px; height: 6px;
+    background: var(--good); border-radius: 50%;
+    margin-right: 6px; box-shadow: 0 0 8px var(--good);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+
+  /* ============ CONTROLS ============ */
+  .controls {
+    position: relative; z-index: 1;
+    padding: 20px 36px;
+    border-bottom: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 24px; align-items: center;
+  }
+  .ctrl-group { display: flex; align-items: center; gap: 8px; }
+  .ctrl-label {
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.15em; color: var(--ink-faint);
+  }
+  .btn {
+    background: transparent; border: 1px solid var(--line);
+    color: var(--ink-dim); padding: 6px 12px;
+    font-family: inherit; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--ink-dim); color: var(--ink); }
+  .btn.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  select, input[type="date"], input[type="text"], input[type="number"] {
+    background: var(--panel); border: 1px solid var(--line);
+    color: var(--ink); padding: 6px 10px;
+    font-family: inherit; font-size: 12px;
+  }
+  input[type="text"] { width: 200px; }
+  input[type="number"] { width: 60px; text-align: right; }
+  .toggle {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    font-size: 11px; color: var(--ink-dim); text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .toggle input { accent-color: var(--accent); }
+  .toggle:has(input:checked) { color: var(--ink); }
+
+  /* ============ KPI CARDS ============ */
+  .kpi-row {
+    position: relative; z-index: 1;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1px; background: var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .kpi {
+    background: var(--bg); padding: 20px 24px;
+    position: relative;
+  }
+  .kpi-label {
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.18em; color: var(--ink-faint);
+    margin-bottom: 8px;
+  }
+  .kpi-value {
+    font-family: 'Fraunces', serif;
+    font-size: 28px; font-weight: 400;
+    letter-spacing: -0.02em;
+  }
+  .kpi-delta {
+    font-size: 11px; margin-top: 6px;
+    color: var(--ink-dim);
+  }
+  .kpi-delta.up { color: var(--good); }
+  .kpi-delta.down { color: var(--bad); }
+  .kpi.alert::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--bad);
+  }
+  .kpi.alert .kpi-value { color: var(--bad); }
+
+  /* ============ CHART GRID ============ */
+  .grid {
+    position: relative; z-index: 1;
+    display: grid; grid-template-columns: repeat(2, 1fr);
+    gap: 1px; background: var(--line);
+  }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .chart-card {
+    background: var(--bg); padding: 24px;
+  }
+  .chart-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 16px;
+  }
+  .chart-title {
+    font-family: 'Fraunces', serif; font-size: 20px;
+    font-weight: 400; font-style: italic; letter-spacing: -0.01em;
+  }
+  .chart-title .key {
+    font-style: normal; font-weight: 600;
+    color: var(--accent); margin-right: 4px;
+  }
+  .chart-sub {
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.15em; color: var(--ink-faint);
+    margin-top: 2px;
+  }
+  .chart-stats {
+    text-align: right; font-size: 11px; color: var(--ink-dim);
+  }
+  .chart-stats .now {
+    font-family: 'Fraunces', serif; font-size: 20px;
+    color: var(--ink); display: block;
+  }
+  .canvas-wrap { position: relative; height: 220px; }
+  .alert-badge {
+    display: inline-block; padding: 2px 8px;
+    background: var(--bad); color: var(--bg);
+    font-size: 9px; font-weight: 700;
+    letter-spacing: 0.15em; margin-left: 8px;
+    vertical-align: middle;
+  }
+
+  /* ============ TABLE ============ */
+  .table-wrap {
+    position: relative; z-index: 1;
+    padding: 32px 36px; border-top: 1px solid var(--line);
+  }
+  .table-wrap h2 {
+    font-family: 'Fraunces', serif; font-weight: 300;
+    font-style: italic; font-size: 24px; margin-bottom: 16px;
+  }
+  table {
+    width: 100%; border-collapse: collapse;
+    font-size: 12px;
+  }
+  th {
+    text-align: left; padding: 10px 12px;
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.15em; color: var(--ink-faint);
+    border-bottom: 1px solid var(--line);
+    cursor: pointer; user-select: none;
+  }
+  th:hover { color: var(--ink); }
+  th.num { text-align: right; }
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--panel-2);
+  }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr:hover td { background: var(--panel); }
+  tr.alert td:first-child { border-left: 2px solid var(--bad); }
+  tr.alert td { color: var(--bad); }
+  .name-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ============ LOADING / EMPTY ============ */
+  .state {
+    padding: 80px 36px; text-align: center;
+    color: var(--ink-dim);
+  }
+  .state h1 {
+    font-family: 'Fraunces', serif; font-weight: 300;
+    font-size: 28px; font-style: italic; margin-bottom: 12px;
+    color: var(--ink);
+  }
+  .state code {
+    display: block; background: var(--panel); padding: 12px;
+    margin: 16px auto; max-width: 600px; text-align: left;
+    font-size: 11px; word-break: break-all;
+  }
+
+  /* ============ HELP TEXT ============ */
+  .help {
+    padding: 24px 36px; color: var(--ink-faint);
+    font-size: 11px; line-height: 1.7;
+    border-top: 1px solid var(--line);
+  }
+  .help b { color: var(--ink-dim); font-weight: 500; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="brand"><span>META</span> ads <em>terminal</em></div>
+    <div style="font-size:11px;color:var(--ink-faint);letter-spacing:.1em;margin-top:4px;">
+      PERFORMANCE MONITORING / ANALYSIS
+    </div>
+  </div>
+  <div class="meta">
+    <div><span class="live"></span>LIVE FEED</div>
+    <div id="lastUpdate" style="margin-top:4px;">—</div>
+  </div>
+</header>
+
+<div class="controls">
+  <div class="ctrl-group">
+    <span class="ctrl-label">Range</span>
+    <button class="btn preset" data-days="7">7D</button>
+    <button class="btn preset active" data-days="14">14D</button>
+    <button class="btn preset" data-days="30">30D</button>
+    <button class="btn preset" data-days="90">90D</button>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">From</span>
+    <input type="date" id="dateFrom">
+    <span class="ctrl-label">To</span>
+    <input type="date" id="dateTo">
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Level</span>
+    <select id="levelSelect">
+      <option value="campaign">Campaign</option>
+      <option value="adset">Ad Set</option>
+      <option value="ad">Ad</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Filter</span>
+    <input type="text" id="entityFilter" placeholder="all entities">
+  </div>
+  <label class="toggle">
+    <input type="checkbox" id="toggleMA" checked> 7-day moving avg
+  </label>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Alert ±%</span>
+    <input type="number" id="threshold" value="20" min="5" max="100" step="5">
+  </div>
+</div>
+
+<div class="kpi-row" id="kpiRow"></div>
+<div class="grid" id="grid"></div>
+
+<div class="table-wrap">
+  <h2>Entities <span style="color:var(--ink-faint);font-size:13px;font-style:normal;font-family:'JetBrains Mono',monospace;letter-spacing:.1em;">/ SORTED BY SPEND</span></h2>
+  <div style="overflow-x:auto;">
+    <table id="entityTable">
+      <thead><tr id="tableHead"></tr></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="help">
+  <b>How to read this:</b> 각 차트의 점선은 선택 구간의 평균선이고, 연한 곡선은 7일 이동평균입니다.
+  빨간 점은 7일 이동평균 대비 ±N%(상단 컨트롤) 이상 악화된 날을 표시합니다. CPA/CPC/CPM/Frequency는 <em>높을수록</em> 악화,
+  ROAS/CTR/전환수는 <em>낮을수록</em> 악화로 판정합니다. KPI 카드 상단에 빨간 줄이 뜨면 가장 최근일이 임계치를 벗어난 상태입니다.
+</div>
+
+<div id="emptyState" class="state" style="display:none;">
+  <h1>데이터 연결이 필요합니다</h1>
+  <p>Google Sheets를 "웹에 게시"한 CSV URL을 <b>config.js</b> 또는 아래 변수에 넣어주세요.</p>
+  <code>// index.html 상단의 SHEETS_CSV_URL 변수를 본인 시트 URL로 교체</code>
+</div>
+
+<script>
+// ============================================================
+// CONFIG — 본인 Google Sheets의 "웹에 게시" CSV URL로 교체
+// 방법: Sheets → 파일 → 공유 → 웹에 게시 → CSV 형식 → 링크 복사
+// ============================================================
+const SHEETS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQrRmqLnQR_D3BIwY3K34XozqmqSsommCPognSU_WQYB9Dty6Yf9El3DbVEEiDqWzmuYmc3kbR9mBMT/pub?gid=1842690949&single=true&output=csv';
+
+// ============================================================
+// 지표 정의: key, label, format, 방향(악화 = 'up' or 'down'),
+// 색상
+// ============================================================
+const METRICS = [
+  { key: 'spend',           label: 'Spend',         fmt: 'currency', worse: null,   color: '#b07d3f' },
+  { key: 'impressions',     label: 'Impressions',   fmt: 'int',      worse: null,   color: '#8a8270' },
+  { key: 'clicks',          label: 'Clicks',        fmt: 'int',      worse: null,   color: '#8a8270' },
+  { key: 'conversions',     label: 'Conversions',   fmt: 'int',      worse: 'down', color: '#3f8a4d' },
+  { key: 'ctr',             label: 'CTR',           fmt: 'percent',  worse: 'down', color: '#2e7d7d', alert: true },
+  { key: 'cpa',             label: 'CPA',           fmt: 'currency', worse: 'up',   color: '#cc4437', alert: true },
+  { key: 'roas',            label: 'ROAS',          fmt: 'ratio',    worse: 'down', color: '#3f8a4d', alert: true },
+  { key: 'frequency',       label: 'Frequency',     fmt: 'ratio',    worse: 'up',   color: '#c2922a', alert: true },
+];
+
+// ============================================================
+// STATE
+// ============================================================
+const state = {
+  raw: [],          // 모든 시트 행
+  level: 'campaign',
+  entityFilter: '',
+  dateFrom: null,
+  dateTo: null,
+  showMA: true,
+  threshold: 20,    // %
+  charts: {},
+};
+
+// ============================================================
+// FORMATTERS
+// ============================================================
+const fmtCurrency = v => '₩' + Math.round(v).toLocaleString('ko-KR');
+const fmtInt = v => Math.round(v).toLocaleString('ko-KR');
+const fmtPct = v => v.toFixed(2) + '%';
+const fmtRatio = v => v.toFixed(2);
+function fmt(v, type) {
+  if (v == null || isNaN(v)) return '—';
+  if (type === 'currency') return fmtCurrency(v);
+  if (type === 'int') return fmtInt(v);
+  if (type === 'percent') return fmtPct(v);
+  if (type === 'ratio') return fmtRatio(v);
+  return v;
+}
+
+// ============================================================
+// DATA LOADING
+// ============================================================
+// 다양한 날짜 표기("2026-05-06", "2026. 5. 6", "5/6/2026" 등)를 YYYY-MM-DD로 정규화
+function normDate(v) {
+  if (v == null) return '';
+  const s = String(v).trim();
+  // 이미 ISO 형식
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[1] + '-' + m[2] + '-' + m[3];
+  // 한국 로케일: 2026. 5. 6 / 2026.05.06
+  m = s.match(/^(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})/);
+  if (m) return m[1] + '-' + String(m[2]).padStart(2,'0') + '-' + String(m[3]).padStart(2,'0');
+  // 미국식: 5/6/2026
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return m[3] + '-' + String(m[1]).padStart(2,'0') + '-' + String(m[2]).padStart(2,'0');
+  // 마지막 수단: Date 파싱
+  const d = new Date(s);
+  if (!isNaN(d)) {
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  return s.slice(0, 10);
+}
+
+async function loadData() {
+  if (!SHEETS_CSV_URL || SHEETS_CSV_URL.includes('PASTE_YOUR')) {
+    document.getElementById('emptyState').style.display = 'block';
+    document.querySelector('.grid').style.display = 'none';
+    document.querySelector('.kpi-row').style.display = 'none';
+    document.querySelector('.table-wrap').style.display = 'none';
+    return;
+  }
+  try {
+    const res = await fetch(SHEETS_CSV_URL);
+    const text = await res.text();
+    const parsed = Papa.parse(text, { header: true, dynamicTyping: false, skipEmptyLines: true });
+    state.raw = parsed.data
+      .filter(r => r.date && r.level)
+      .map(r => ({
+        ...r,
+        date: normDate(r.date),
+        level: String(r.level).trim().toLowerCase(),
+        spend: +r.spend || 0,
+        impressions: +r.impressions || 0,
+        clicks: +r.clicks || 0,
+        reach: +r.reach || 0,
+        frequency: +r.frequency || 0,
+        ctr: +r.ctr || 0,
+        cpc: +r.cpc || 0,
+        cpm: +r.cpm || 0,
+        conversions: +r.conversions || 0,
+        conversion_value: +r.conversion_value || 0,
+        cpa: +r.cpa || 0,
+        roas: +r.roas || 0,
+      }));
+    
+    document.getElementById('lastUpdate').textContent =
+      'UPDATED · ' + new Date().toLocaleString('ko-KR');
+
+    if (state.raw.length === 0) {
+      document.getElementById('emptyState').style.display = 'block';
+      document.getElementById('emptyState').innerHTML =
+        '<h1>CSV는 연결됐지만 데이터가 0행입니다</h1>' +
+        '<p>가장 흔한 원인: "웹에 게시"에서 <b>전체 문서</b>가 선택된 경우 빈 첫 시트가 내보내집니다.<br>' +
+        '게시 설정에서 <b>meta_daily 시트만</b> 선택해 다시 게시하고, 새 URL로 교체해주세요.</p>';
+      return;
+    }
+    render();
+  } catch (e) {
+    document.getElementById('emptyState').style.display = 'block';
+    document.getElementById('emptyState').innerHTML =
+      '<h1>데이터 로드 실패</h1><p>' + e.message + '</p>';
+  }
+}
+
+// ============================================================
+// AGGREGATION
+// ============================================================
+function getFilteredRows() {
+  return state.raw.filter(r => {
+    if (r.level !== state.level) return false;
+    if (state.dateFrom && r.date < state.dateFrom) return false;
+    if (state.dateTo && r.date > state.dateTo) return false;
+    if (state.entityFilter) {
+      const f = state.entityFilter.toLowerCase();
+      const name = (r.entity_name || '').toLowerCase();
+      if (!name.includes(f)) return false;
+    }
+    return true;
+  });
+}
+
+// 날짜별로 집계 (선택된 레벨 + 필터 내에서 SUM)
+function aggregateByDate(rows) {
+  const byDate = {};
+  for (const r of rows) {
+    if (!byDate[r.date]) {
+      byDate[r.date] = { date: r.date, spend:0, impressions:0, clicks:0,
+        reach:0, frequency_sum:0, frequency_n:0,
+        conversions:0, conversion_value:0 };
+    }
+    const d = byDate[r.date];
+    d.spend += r.spend;
+    d.impressions += r.impressions;
+    d.clicks += r.clicks;
+    d.reach += r.reach;
+    if (r.frequency > 0) { d.frequency_sum += r.frequency * r.impressions; d.frequency_n += r.impressions; }
+    d.conversions += r.conversions;
+    d.conversion_value += r.conversion_value;
+  }
+  // 파생지표 계산
+  const arr = Object.values(byDate).sort((a,b) => a.date.localeCompare(b.date));
+  for (const d of arr) {
+    d.ctr = d.impressions > 0 ? (d.clicks / d.impressions) * 100 : 0;
+    d.cpc = d.clicks > 0 ? d.spend / d.clicks : 0;
+    d.cpm = d.impressions > 0 ? (d.spend / d.impressions) * 1000 : 0;
+    d.cpa = d.conversions > 0 ? d.spend / d.conversions : 0;
+    d.roas = d.spend > 0 ? d.conversion_value / d.spend : 0;
+    d.frequency = d.frequency_n > 0 ? d.frequency_sum / d.frequency_n : 0;
+  }
+  return arr;
+}
+
+// 7일 이동평균
+function movingAverage(values, window = 7) {
+  const out = [];
+  for (let i = 0; i < values.length; i++) {
+    const start = Math.max(0, i - window + 1);
+    const slice = values.slice(start, i + 1).filter(v => v != null && !isNaN(v));
+    if (slice.length === 0) { out.push(null); continue; }
+    out.push(slice.reduce((a, b) => a + b, 0) / slice.length);
+  }
+  return out;
+}
+
+// 임계 초과 인덱스 반환
+function detectAnomalies(values, mavg, threshold, worseDir) {
+  return values.map((v, i) => {
+    if (mavg[i] == null || mavg[i] === 0 || v == null) return false;
+    const pctDiff = ((v - mavg[i]) / mavg[i]) * 100;
+    if (worseDir === 'up') return pctDiff > threshold;
+    if (worseDir === 'down') return pctDiff < -threshold;
+    return false;
+  });
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function render() {
+  const rows = getFilteredRows();
+  const daily = aggregateByDate(rows);
+  if (daily.length === 0) {
+    document.getElementById('grid').innerHTML =
+      '<div class="state" style="grid-column:1/-1"><h1>표시할 데이터가 없습니다</h1><p>날짜 범위 또는 필터를 조정해보세요.</p></div>';
+    document.getElementById('kpiRow').innerHTML = '';
+    document.getElementById('tableBody').innerHTML = '';
+    return;
+  }
+  renderKPIs(daily);
+  renderCharts(daily);
+  renderTable(rows);
+}
+
+// --- KPI 카드 ---
+function renderKPIs(daily) {
+  const last = daily[daily.length - 1];
+  const prev = daily[daily.length - 2];
+  const kpiKeys = ['spend','conversions','cpa','roas','ctr','frequency'];
+  const html = kpiKeys.map(k => {
+    const m = METRICS.find(x => x.key === k);
+    const cur = last[k];
+    const prv = prev ? prev[k] : null;
+    let delta = '', cls = '';
+    if (prv != null && prv > 0) {
+      const pct = ((cur - prv) / prv) * 100;
+      const arrow = pct >= 0 ? '▲' : '▼';
+      // 방향성에 따라 색
+      let good = false;
+      if (m.worse === 'up') good = pct < 0;
+      else if (m.worse === 'down') good = pct > 0;
+      else good = pct >= 0;
+      cls = good ? 'up' : 'down';
+      delta = arrow + ' ' + Math.abs(pct).toFixed(1) + '%';
+    }
+    // alert 판정: 마지막 값이 7일 평균 대비 임계치 벗어남
+    let isAlert = false;
+    if (m.alert && daily.length >= 4) {
+      const values = daily.map(d => d[k]);
+      const mavg = movingAverage(values, 7);
+      const anom = detectAnomalies(values, mavg, state.threshold, m.worse);
+      isAlert = anom[anom.length - 1];
+    }
+    return `
+      <div class="kpi ${isAlert ? 'alert' : ''}">
+        <div class="kpi-label">${m.label}${isAlert ? '<span class="alert-badge">ALERT</span>' : ''}</div>
+        <div class="kpi-value">${fmt(cur, m.fmt)}</div>
+        <div class="kpi-delta ${cls}">${delta || '—'}</div>
+      </div>
+    `;
+  }).join('');
+  document.getElementById('kpiRow').innerHTML = html;
+}
+
+// --- 차트 그리드 ---
+function renderCharts(daily) {
+  const labels = daily.map(d => d.date.slice(5));
+  const grid = document.getElementById('grid');
+  grid.innerHTML = METRICS.map(m => `
+    <div class="chart-card">
+      <div class="chart-head">
+        <div>
+          <div class="chart-title"><span class="key">/</span>${m.label}</div>
+          <div class="chart-sub">${m.worse === 'up' ? 'lower is better' : m.worse === 'down' ? 'higher is better' : 'volume'}</div>
+        </div>
+        <div class="chart-stats">
+          <span class="now">${fmt(daily[daily.length-1][m.key], m.fmt)}</span>
+          avg ${fmt(daily.reduce((a,d)=>a+d[m.key],0)/daily.length, m.fmt)}
+        </div>
+      </div>
+      <div class="canvas-wrap"><canvas id="chart-${m.key}"></canvas></div>
+    </div>
+  `).join('');
+  
+  // 차트 인스턴스 파기 후 재생성
+  for (const k in state.charts) { state.charts[k].destroy(); }
+  state.charts = {};
+  
+  METRICS.forEach(m => {
+    const values = daily.map(d => d[m.key]);
+    const mavg = movingAverage(values, 7);
+    const anom = m.alert ? detectAnomalies(values, mavg, state.threshold, m.worse) : values.map(()=>false);
+    
+    const ctx = document.getElementById('chart-' + m.key).getContext('2d');
+    state.charts[m.key] = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: m.label,
+            data: values,
+            borderColor: m.color,
+            backgroundColor: m.color + '15',
+            borderWidth: 1.5,
+            tension: 0.25,
+            fill: true,
+            pointRadius: anom.map(a => a ? 5 : 0),
+            pointBackgroundColor: anom.map(a => a ? '#cc4437' : m.color),
+            pointBorderColor: '#faf6ef',
+            pointBorderWidth: 2,
+            pointHoverRadius: 6,
+          },
+          ...(state.showMA ? [{
+            label: '7-day MA',
+            data: mavg,
+            borderColor: '#1f1c17',
+            borderWidth: 1,
+            borderDash: [4, 4],
+            pointRadius: 0,
+            tension: 0.35,
+            fill: false,
+          }] : []),
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#ffffff',
+            borderColor: '#ddd4c3',
+            borderWidth: 1,
+            titleColor: '#1f1c17',
+            bodyColor: '#1f1c17',
+            titleFont: { family: "'JetBrains Mono', monospace", size: 11 },
+            bodyFont: { family: "'JetBrains Mono', monospace", size: 11 },
+            padding: 10,
+            callbacks: {
+              label: (ctx) => ctx.dataset.label + ': ' + fmt(ctx.parsed.y, m.fmt),
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { color: '#e9e1d1' },
+            ticks: { color: '#97907f', font: { family: "'JetBrains Mono', monospace", size: 10 }, maxRotation: 0 },
+          },
+          y: {
+            grid: { color: '#e9e1d1' },
+            ticks: {
+              color: '#97907f',
+              font: { family: "'JetBrains Mono', monospace", size: 10 },
+              callback: v => fmt(v, m.fmt),
+            },
+          },
+        },
+      },
+    });
+  });
+}
+
+// --- 테이블 (광고세트/광고 정렬) ---
+let sortKey = 'spend';
+let sortDir = -1;
+function renderTable(rows) {
+  // 날짜 범위 내에서 entity별로 합산
+  const byEntity = {};
+  for (const r of rows) {
+    const k = r.entity_id;
+    if (!byEntity[k]) {
+      byEntity[k] = { entity_name: r.entity_name, campaign_name: r.campaign_name,
+        adset_name: r.adset_name, spend:0, impressions:0, clicks:0,
+        conversions:0, conversion_value:0, reach_max:0, freq_w:0, freq_n:0 };
+    }
+    const e = byEntity[k];
+    e.spend += r.spend; e.impressions += r.impressions; e.clicks += r.clicks;
+    e.conversions += r.conversions; e.conversion_value += r.conversion_value;
+    e.reach_max = Math.max(e.reach_max, r.reach);
+    if (r.frequency > 0) { e.freq_w += r.frequency * r.impressions; e.freq_n += r.impressions; }
+  }
+  const entities = Object.values(byEntity).map(e => ({
+    ...e,
+    ctr: e.impressions > 0 ? (e.clicks / e.impressions) * 100 : 0,
+    cpc: e.clicks > 0 ? e.spend / e.clicks : 0,
+    cpa: e.conversions > 0 ? e.spend / e.conversions : 0,
+    roas: e.spend > 0 ? e.conversion_value / e.spend : 0,
+    frequency: e.freq_n > 0 ? e.freq_w / e.freq_n : 0,
+  }));
+  
+  entities.sort((a, b) => ((a[sortKey] || 0) - (b[sortKey] || 0)) * sortDir);
+  
+  const cols = [
+    {k:'entity_name', label:'Name', num:false},
+    {k:'spend',       label:'Spend', num:true, fmt:'currency'},
+    {k:'impressions', label:'Imp', num:true, fmt:'int'},
+    {k:'clicks',      label:'Clicks', num:true, fmt:'int'},
+    {k:'ctr',         label:'CTR', num:true, fmt:'percent'},
+    {k:'cpc',         label:'CPC', num:true, fmt:'currency'},
+    {k:'conversions', label:'Conv', num:true, fmt:'int'},
+    {k:'cpa',         label:'CPA', num:true, fmt:'currency'},
+    {k:'roas',        label:'ROAS', num:true, fmt:'ratio'},
+    {k:'frequency',   label:'Freq', num:true, fmt:'ratio'},
+  ];
+  document.getElementById('tableHead').innerHTML =
+    cols.map(c => `<th class="${c.num?'num':''}" data-key="${c.k}">${c.label}${sortKey===c.k?(sortDir<0?' ↓':' ↑'):''}</th>`).join('');
+  
+  // 임계치 위반 판정 (광고/광고세트별로 단순화: spend 대비 cpa 또는 roas가 전체 평균 대비 X% 안 좋으면)
+  const allCPA = entities.filter(e=>e.cpa>0).map(e=>e.cpa);
+  const allROAS = entities.filter(e=>e.roas>0).map(e=>e.roas);
+  const medCPA = allCPA.length ? allCPA.sort((a,b)=>a-b)[Math.floor(allCPA.length/2)] : null;
+  const medROAS = allROAS.length ? allROAS.sort((a,b)=>a-b)[Math.floor(allROAS.length/2)] : null;
+  
+  document.getElementById('tableBody').innerHTML = entities.map(e => {
+    let alert = false;
+    if (medCPA && e.cpa > 0 && e.cpa > medCPA * (1 + state.threshold/100)) alert = true;
+    if (medROAS && e.roas > 0 && e.roas < medROAS * (1 - state.threshold/100)) alert = true;
+    return `<tr class="${alert?'alert':''}">` + cols.map(c =>
+      `<td class="${c.num?'num':''} ${c.k==='entity_name'?'name-cell':''}" title="${c.k==='entity_name'?(e.entity_name||''):''}">${c.num ? fmt(e[c.k], c.fmt) : (e[c.k] || '—')}</td>`
+    ).join('') + '</tr>';
+  }).join('');
+  
+  // 정렬 클릭
+  document.querySelectorAll('#tableHead th').forEach(th => {
+    th.onclick = () => {
+      const k = th.dataset.key;
+      if (sortKey === k) sortDir = -sortDir;
+      else { sortKey = k; sortDir = -1; }
+      renderTable(rows);
+    };
+  });
+}
+
+// ============================================================
+// EVENT WIRING
+// ============================================================
+document.querySelectorAll('.preset').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.preset').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const days = +btn.dataset.days;
+    const to = new Date();
+    const from = new Date(to.getTime() - days * 86400000);
+    state.dateFrom = from.toISOString().slice(0,10);
+    state.dateTo = to.toISOString().slice(0,10);
+    document.getElementById('dateFrom').value = state.dateFrom;
+    document.getElementById('dateTo').value = state.dateTo;
+    render();
+  };
+});
+document.getElementById('dateFrom').addEventListener('change', e => {
+  state.dateFrom = e.target.value;
+  document.querySelectorAll('.preset').forEach(b => b.classList.remove('active'));
+  render();
+});
+document.getElementById('dateTo').addEventListener('change', e => {
+  state.dateTo = e.target.value;
+  document.querySelectorAll('.preset').forEach(b => b.classList.remove('active'));
+  render();
+});
+document.getElementById('levelSelect').addEventListener('change', e => {
+  state.level = e.target.value; render();
+});
+document.getElementById('entityFilter').addEventListener('input', e => {
+  state.entityFilter = e.target.value; render();
+});
+document.getElementById('toggleMA').addEventListener('change', e => {
+  state.showMA = e.target.checked; render();
+});
+document.getElementById('threshold').addEventListener('input', e => {
+  state.threshold = +e.target.value || 20; render();
+});
+
+// 초기 날짜 (14일 기본)
+(function init() {
+  const to = new Date();
+  const from = new Date(to.getTime() - 14 * 86400000);
+  state.dateFrom = from.toISOString().slice(0,10);
+  state.dateTo = to.toISOString().slice(0,10);
+  document.getElementById('dateFrom').value = state.dateFrom;
+  document.getElementById('dateTo').value = state.dateTo;
+})();
+
+loadData();
+</script>
+</body>
+</html>
