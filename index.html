@@ -102,6 +102,7 @@ th{color:var(--dim);font-weight:600;font-size:12px}
       <button class="tab on" data-v="v1">개요</button>
       <button class="tab" data-v="v2">구성</button>
       <button class="tab" data-v="v3">고객·이익</button>
+      <button class="tab" data-v="v4">월별 표</button>
     </div>
   </div>
 
@@ -121,6 +122,15 @@ th{color:var(--dim);font-weight:600;font-size:12px}
     <div class="panel"><h2>요일 패턴 <small>일평균 판매수량 · 광고비</small></h2><div class="ch"><canvas id="cDow"></canvas></div></div>
     <div class="panel"><h2>날씨와 판매 <small>서울 기준 일평균</small></h2><div class="ch"><canvas id="cWx"></canvas></div></div>
     <div class="panel"><h2>향수별 8주 흐름 <small>주간 판매수량</small></h2><div class="sparks" id="sparks"></div></div>
+  </div></div>
+
+  <div class="view" id="v4"><div class="grid">
+    <div class="panel full"><h2>연도별 월 매출 비교 <small>같은 달끼리 겹쳐 보기</small></h2><div class="ch"><canvas id="cYearly"></canvas></div></div>
+    <div class="panel full"><h2>월별 손익 표 <small>매출·광고비·이익 — 예전 월별매출 시트</small></h2><div id="mTable" style="overflow:auto"></div></div>
+    <div class="panel full"><h2>제품 × 월 <small>최근 12개월</small>
+      <span class="sum"><button class="chip on" id="mxQty" style="padding:3px 10px;font-size:12px">수량</button>
+      <button class="chip" id="mxAmt" style="padding:3px 10px;font-size:12px">금액</button></span></h2>
+      <div id="pMatrix" style="overflow:auto"></div></div>
   </div></div>
 
   <div class="view" id="v3"><div class="grid">
@@ -144,6 +154,7 @@ const CSV = {
   meta:     "https://docs.google.com/spreadsheets/d/e/2PACX-1vQrRmqLnQR_D3BIwY3K34XozqmqSsommCPognSU_WQYB9Dty6Yf9El3DbVEEiDqWzmuYmc3kbR9mBMT/pub?gid=597162935&single=true&output=csv"    // 기존 메타 광고 시트의 meta_daily 탭
 };
 /* ============================================================== */
+
 const $=s=>document.querySelector(s);
 const INK="#f2f0e9", DIM="#b7b4aa", FAINT="#6e6c64", RED="#e0564a", GREEN="#8fbf83", AMBER="#d4a95c", CYAN="#8fb8c9", LINE="#2c2b28";
 /* 지표별 고정 색: 매출=화이트, 수량=시안, 광고비=앰버, 이익=그린, 감소·음수=레드 */
@@ -171,7 +182,9 @@ let CH={}; let SPARKS=[];
 function mk(id,cfg){ if(CH[id])CH[id].destroy(); CH[id]=new Chart($("#"+id),cfg); }
 
 /* ---------- 로드: 워커 파싱 + 캐시 즉시 표시 ---------- */
-const CK="bx_dash_v3";
+const CK="bx_dash_v4";
+function tab2obj(t){ if(!t||t.length<2)return[]; const h=t[0].map(x=>String(x??"")); 
+  return t.slice(1).map(r=>{const o={};h.forEach((k,i)=>o[k]=r[i]);return o;}); }
 function loadCSV(url,useWorker){return new Promise(res=>{ if(!url){res([]);return;}
   Papa.parse(url,{download:true,header:true,skipEmptyLines:true,worker:!!useWorker,
     complete:r=>res(r.data||[]),error:()=>res([])});});}
@@ -200,15 +213,24 @@ function buildDB(sa,pr,ev,se,fx,nv,wx,me){
 }
 
 async function boot(){
-  if(!CSV.sales){$("#setup").style.display="block";return;}
+  if(!DATA_URL && !CSV.sales){$("#setup").style.display="block";return;}
   const lb=$("#loadbar");
   const cached=readCache();
   if(cached){ DB=cached; firstRender();
     lb.style.display="block"; lb.textContent="지난 방문 데이터 표시 중 · 최신 데이터 갱신 중…"; }
   else { lb.style.display="block"; lb.textContent="데이터 불러오는 중…"; }
-  const [sa,pr,ev,se,fx,nv,wx,me]=await Promise.all([
-    loadCSV(CSV.sales,true), loadCSV(CSV.products), loadCSV(CSV.events), loadCSV(CSV.settings),
-    loadCSV(CSV.fixed), loadCSV(CSV.naver), loadCSV(CSV.weather), loadCSV(CSV.meta,true)]);
+  let sa=[],pr=[],ev=[],se=[],fx=[],nv=[],wx=[],me=[];
+  if(DATA_URL){
+    try{ const r=await fetch(DATA_URL,{redirect:"follow"}); const j=await r.json();
+      sa=tab2obj(j.sales); pr=tab2obj(j.products); ev=tab2obj(j.events); se=tab2obj(j.settings);
+      fx=tab2obj(j.fixed_costs); nv=tab2obj(j.naver_daily); wx=tab2obj(j.weather); me=tab2obj(j.meta);
+    }catch(e){ console.error("DATA_URL 실패, CSV로 대체",e); }
+  }
+  if(!sa.length){
+    [sa,pr,ev,se,fx,nv,wx,me]=await Promise.all([
+      loadCSV(CSV.sales,true), loadCSV(CSV.products), loadCSV(CSV.events), loadCSV(CSV.settings),
+      loadCSV(CSV.fixed), loadCSV(CSV.naver), loadCSV(CSV.weather), loadCSV(CSV.meta,true)]);
+  }
   if(sa.length){ buildDB(sa,pr,ev,se,fx,nv,wx,me); saveCache(); firstRender(); }
   lb.style.display="none";
   $("#upd").textContent="updated "+today;
@@ -234,6 +256,9 @@ function buildControls(){
     b.onclick=()=>{ST.range=v;[...rc.children].forEach(c=>c.classList.remove("on"));b.classList.add("on");render();};rc.append(b);});
   rebuildChannelChips();
   $("#tVat").onchange=render; $("#tInc").onchange=render;
+  ST.mx="qty";
+  $("#mxQty").onclick=()=>{ST.mx="qty";$("#mxQty").classList.add("on");$("#mxAmt").classList.remove("on");productMatrix();};
+  $("#mxAmt").onclick=()=>{ST.mx="amt";$("#mxAmt").classList.add("on");$("#mxQty").classList.remove("on");productMatrix();};
   $("#provNote").textContent="◻ 점선 이후 = 잠정(최근 2일)";
   document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
     document.querySelectorAll(".tab").forEach(x=>x.classList.remove("on"));
@@ -263,7 +288,7 @@ function spendRange(a,b){ let s=0; const m=spendMapRange(a,b); for(const k in m)
 function windowStats(rows,a,b){
   const v=vat();
   const rev=rows.reduce((x,r)=>x+r.amt,0)*v;
-  const consumer=rows.filter(r=>r.grp==="제품 판매"&&r.ch!=="도매"&&r.src!=="legacy");
+  const consumer=rows.filter(r=>r.grp==="제품 판매"&&r.ch!=="도매"&&r.ch!=="쿠팡(로켓)"&&r.src!=="legacy");
   const orders=new Set(consumer.map(r=>r.ch+"|"+r.order)).size;
   const spend=spendRange(a,b)*v;
   const fee=rows.reduce((x,r)=>x+r.fee,0)*v, ship=rows.reduce((x,r)=>x+r.ship,0)*v, cost=rows.reduce((x,r)=>x+r.cost,0)*v;
@@ -316,7 +341,7 @@ function kpis(){
   const revD={},ordD={};
   DB.sales.forEach(r=>{ if(r.st!=="정상"||!ST.chOn.has(r.ch)||r.date<d30[0])return;
     revD[r.date]=(revD[r.date]||0)+r.amt;
-    if(r.grp==="제품 판매"&&r.ch!=="도매"&&r.src!=="legacy")(ordD[r.date]=ordD[r.date]||new Set()).add(r.ch+"|"+r.order); });
+    if(r.grp==="제품 판매"&&r.ch!=="도매"&&r.ch!=="쿠팡(로켓)"&&r.src!=="legacy")(ordD[r.date]=ordD[r.date]||new Set()).add(r.ch+"|"+r.order); });
   if($("#ks0")) kpiSpark($("#ks0"), d30.map(d=>revD[d]||0), INK);
   if($("#ks1")) kpiSpark($("#ks1"), d30.map(d=>ordD[d]?ordD[d].size:0), CYAN);
 }
@@ -498,7 +523,7 @@ function weather(){
 
 /* ---------- 재구매 ---------- */
 function repurchase(){
-  const rows=DB.sales.filter(r=>r.st==="정상"&&r.key&&r.grp==="제품 판매"&&r.ch!=="도매");
+  const rows=DB.sales.filter(r=>r.st==="정상"&&r.key&&r.grp==="제품 판매"&&r.ch!=="도매"&&r.ch!=="쿠팡(로켓)");
   const first={};rows.forEach(r=>{if(!first[r.key]||r.date<first[r.key])first[r.key]=r.date;});
   const months=[...new Set(rows.map(r=>ym(r.date)))].sort().slice(-18);
   const share=months.map(m=>{
@@ -569,6 +594,71 @@ function decompose(){
   $("#diff").innerHTML=html+"</table><div class='note'>튀는 항목이 있으면 추이 차트의 이벤트 마커(품절·세일·가격·소재 변경)와 대조</div>";
 }
 
+/* ---------- 월별 표 탭 ---------- */
+function yearly(){
+  const v=vat();
+  const rows=DB.sales.filter(r=>r.st==="정상"&&ST.chOn.has(r.ch));
+  const per={}; rows.forEach(r=>{const y=r.date.slice(0,4),m=+r.date.slice(5,7);
+    (per[y]=per[y]||Array(12).fill(0))[m-1]+=r.amt*v;});
+  const years=Object.keys(per).sort().slice(-6);
+  const cy=today.slice(0,4);
+  const ds=years.map((y,i)=>({label:y,data:per[y].map((x,mi)=>{ 
+      const future=(y===cy && mi+1>+today.slice(5,7)); return future?null:x; }),
+    borderColor:y===cy?INK:SHADES[(i+2)%SHADES.length],
+    borderWidth:y===cy?2.5:1.5,pointRadius:y===cy?3:0,spanGaps:false}));
+  mk("cYearly",{type:"line",data:{labels:["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"],datasets:ds},
+   options:{maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+": "+won(c.raw)}}},
+     scales:{y:{ticks:{callback:won}}}}});
+}
+function monthlyTable(){
+  const v=vat(), it=incTax();
+  const rows=DB.sales.filter(r=>r.st==="정상"&&ST.chOn.has(r.ch));
+  const m={};
+  rows.forEach(r=>{const k=ym(r.date); m[k]=m[k]||{rev:0,qty:0,cost:0,fee:0,ship:0};
+    m[k].rev+=r.amt*v; m[k].cost+=r.cost*v; m[k].fee+=r.fee*v; m[k].ship+=r.ship*v;
+    if(r.grp==="제품 판매")m[k].qty+=r.qty;});
+  DB.meta.concat(DB.naver).forEach(x=>{const k=ym(x.date); if(m[k])m[k].sp=(m[k].sp||0)+x.spend*v;});
+  const keys=Object.keys(m).sort().reverse().slice(0,24);
+  let h="<table><tr><th>월</th><th>매출</th><th>전월비</th><th>수량</th><th>원가</th><th>수수료·배송</th><th>광고비</th><th>기여이익</th><th>이익률</th></tr>";
+  keys.forEach((k,i)=>{const x=m[k]; const prev=m[keys[i+1]];
+    const contrib=(x.rev-x.cost-x.fee-x.ship-(x.sp||0));
+    const mom=prev&&prev.rev? (x.rev-prev.rev)/prev.rev*100 : null;
+    h+=`<tr><td>${k}</td><td>${won(x.rev)}</td>
+      <td class="${mom==null?'':(mom>=0?'up':'dn')}">${mom==null?'–':(mom>=0?'+':'')+mom.toFixed(0)+'%'}</td>
+      <td>${x.qty.toLocaleString()}</td><td>${won(x.cost)}</td><td>${won(x.fee+x.ship)}</td>
+      <td>${won(x.sp||0)}</td><td class="${contrib>=0?'':'dn'}">${won(contrib*it)}</td>
+      <td>${x.rev?(contrib/x.rev*100).toFixed(1)+'%':'–'}</td></tr>`;});
+  $("#mTable").innerHTML=h+"</table><div class='note'>기여이익 = 매출−원가−수수료−배송−광고비"+($("#tInc").checked?" · 소득세 적용":"")+" · 최근 24개월 표시</div>";
+}
+function productMatrix(){
+  const v=vat(); const amtMode=ST.mx==="amt";
+  const mkeys=[]; for(let i=11;i>=0;i--){ const d=new Date(today.slice(0,7)+"-01T00:00:00"); d.setMonth(d.getMonth()-i); mkeys.push(d2s(d).slice(0,7)); }
+  const rows=DB.sales.filter(r=>r.st==="정상"&&r.grp==="제품 판매"&&ST.chOn.has(r.ch)&&ym(r.date)>=mkeys[0]);
+  const val=r=>amtMode? r.amt*v : r.qty;
+  const per={},tot={},cats={};
+  rows.forEach(r=>{ (per[r.prod]=per[r.prod]||{})[ym(r.date)]=(per[r.prod][ym(r.date)]||0)+val(r);
+    tot[r.prod]=(tot[r.prod]||0)+val(r); cats[r.prod]=r.cat; });
+  const CATS=["향수","디퓨저","룸스프레이","섬유향수","기타"];
+  let max=0; Object.keys(per).forEach(n=>{for(const k in per[n])max=Math.max(max,per[n][k]);});
+  if(!max){$("#pMatrix").innerHTML="<div class='note'>표시할 판매 데이터가 없습니다</div>";return;}
+  const fmt=x=>amtMode?won(x):Math.round(x).toLocaleString();
+  const cell=(x,bold)=>{ if(!x)return "<td></td>";
+    const a=(0.08+0.7*Math.pow(x/max,0.55)).toFixed(2);
+    return `<td style="background:rgba(242,240,233,${bold?0:a});color:${(!bold&&a>0.42)?'#0b0b0b':'inherit'};${bold?'font-weight:700':''}">${fmt(x)}</td>`; };
+  let h="<table class='heat'><tr><th></th>"+mkeys.map(k=>`<th>${k.slice(2).replace("-",".")}</th>`).join("")+"<th>합</th></tr>";
+  CATS.forEach(cat=>{
+    const names=Object.keys(per).filter(n=>(cats[n]||"기타")===cat).sort((a,b)=>tot[b]-tot[a]);
+    if(!names.length)return;
+    const sub=mkeys.map(k=>names.reduce((a,n)=>a+(per[n][k]||0),0));
+    h+=`<tr><td style="font-weight:700;color:var(--ink)">${cat}</td>${sub.map(x=>cell(x,true)).join("")}<td style="font-weight:700">${fmt(sub.reduce((a,b)=>a+b,0))}</td></tr>`;
+    names.forEach(n=>{ h+=`<tr><td style="padding-left:14px">${n.replace(" 향수","")}</td>`+
+      mkeys.map(k=>cell(per[n][k]||0,false)).join("")+`<td>${fmt(tot[n])}</td></tr>`; });
+  });
+  const grand=mkeys.map(k=>Object.keys(per).reduce((a,n)=>a+(per[n][k]||0),0));
+  h+=`<tr><td style="font-weight:800;color:var(--ink)">합계</td>${grand.map(x=>`<td style="font-weight:700">${fmt(x)}</td>`).join("")}<td style="font-weight:800">${fmt(grand.reduce((a,b)=>a+b,0))}</td></tr>`;
+  $("#pMatrix").innerHTML=h+"</table><div class='note'>채널 필터 적용 · "+(amtMode?"금액(원)":"판매 수량(개)")+" · 예전 매출분석 시트 형식</div>";
+}
+
 /* ---------- 분할 렌더: 패널을 순서대로, 화면 담당 스레드를 막지 않고 ---------- */
 let rq=0;
 function render(){
@@ -577,7 +667,7 @@ function render(){
     ()=>stack("cCat",r=>r.cat,true),
     ()=>stack("cChan",r=>r.src==="legacy"?"과거 채널":r.ch,false),
     ()=>stack("cGroup",r=>r.grp,false),
-    dow,weather,sparks,repurchase,profit,decompose];
+    dow,weather,sparks,repurchase,profit,decompose,yearly,monthlyTable,productMatrix];
   (function step(i){
     if(my!==rq || i>=tasks.length) return;
     try{ tasks[i](); }catch(e){ console.error(e); }
