@@ -159,6 +159,11 @@ const CSV = {
 /* ============================================================== */
 
 const $=s=>document.querySelector(s);
+function showErr(msg){ const lb=document.querySelector("#loadbar");
+  if(!lb) return; lb.style.display="block"; lb.style.background="#3a1512"; lb.style.color="#f0b6ae";
+  lb.textContent="오류: "+msg+" — 이 줄을 캡처해 보내주세요"; }
+window.addEventListener("error",e=>showErr((e.message||"알 수 없음")+" @"+String(e.filename||"").split("/").pop()+":"+e.lineno));
+window.addEventListener("unhandledrejection",e=>showErr(String(e.reason&&e.reason.message||e.reason)));
 const INK="#f2f0e9", DIM="#b7b4aa", FAINT="#6e6c64", RED="#e0564a", GREEN="#8fbf83", AMBER="#d4a95c", CYAN="#8fb8c9", LINE="#2c2b28";
 /* 지표별 고정 색: 매출=화이트, 수량=시안, 광고비=앰버, 이익=그린, 감소·음수=레드 */
 const SHADES=["#f2f0e9","#c3c0b6","#96938a","#6e6c64","#d4a95c","#8fb8c9","#b98b8b","#8fbf83","#a493c0","#4c4a45"];
@@ -265,13 +270,23 @@ async function boot(){
       loadCSV(CSV.sales,true), loadCSV(CSV.products), loadCSV(CSV.events), loadCSV(CSV.settings),
       loadCSV(CSV.fixed), loadCSV(CSV.naver), loadCSV(CSV.weather), loadCSV(CSV.meta,true)]);
   }
-  if(sa.length){
-    let t0=performance.now(); buildDB(sa,pr,ev,se,fx,nv,wx,me); pmark("가공",t0);
-    (window.requestIdleCallback||setTimeout)(()=>{ const t1=performance.now(); saveCache(); pmark("캐시 저장",t1); },1);
-    firstRender();
+  try{
+    if(sa.length){
+      let t0=performance.now(); buildDB(sa,pr,ev,se,fx,nv,wx,me); pmark("가공",t0);
+      const idleSave=()=>{ try{ const t1=performance.now(); saveCache(); pmark("캐시 저장",t1); }catch(e){} };
+      if(window.requestIdleCallback) requestIdleCallback(idleSave,{timeout:3000});
+      else setTimeout(idleSave,1);
+      firstRender();
+      lb.style.display="none";
+    } else {
+      lb.style.display="block";
+      lb.textContent="데이터가 비어 있습니다 — DATA_URL 응답(브라우저에서 직접 열어 JSON 확인)과 CSV 설정을 점검하세요";
+    }
+    $("#upd").textContent="updated "+today;
+  }catch(err){
+    console.error(err);
+    showErr("화면 구성 실패: "+(err&&err.message||err));
   }
-  lb.style.display="none";
-  $("#upd").textContent="updated "+today;
 }
 function firstRender(){
   if(!ST.built){ buildControls(); ST.built=true; } else { rebuildChannelChips(); }
