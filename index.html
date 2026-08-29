@@ -142,7 +142,10 @@ th{color:var(--dim);font-weight:600;font-size:12px}
 </div>
 
 <script>
-/* ================= 설정: 게시 CSV URL 붙여넣기 ================= */
+/* ================= 설정 ================= */
+/* 방법 A(권장·빠름): Apps Script 웹 앱 URL 하나만 붙여넣기 (…/exec) */
+const DATA_URL = "https://script.google.com/macros/s/AKfycbxLN5q9K65YAXsR-gDBlRSPgXQokfLyD1X0HEgRn5h2drMZLw6NmOQ81WVL1txsBEvFzQ/exec";
+/* 방법 B(예전 방식): 아래 CSV 8개 — DATA_URL이 비어 있을 때만 사용 */
 const CSV = {
   sales:    "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=1449099634&single=true&output=csv",   // 공개 시트 sales 탭 (필수)
   products: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=1259382471&single=true&output=csv",
