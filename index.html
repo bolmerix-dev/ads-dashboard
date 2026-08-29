@@ -249,7 +249,7 @@ async function boot(){
   if(DATA_URL){
     try{ let t0=performance.now();
       const ac=new AbortController();
-      const kill=setTimeout(()=>ac.abort(),25000);
+      const kill=setTimeout(()=>ac.abort(),90000);
       const slow=setTimeout(()=>{lb.style.display="block";
         lb.textContent="서버가 데이터를 계산하는 중… 정규화 직후 첫 접속은 오래 걸릴 수 있어요";},4000);
       const r=await fetch(DATA_URL,{redirect:"follow",signal:ac.signal});
