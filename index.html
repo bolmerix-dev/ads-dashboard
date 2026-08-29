@@ -188,9 +188,14 @@ function perfShow(){
   console.table(PERF.map(([n,ms])=>({단계:n, ms})));
   if(location.hash.includes("debug")){
     const tot=PERF.filter(x=>x[0].startsWith("렌더")).reduce((a,x)=>a+x[1],0);
+    const wall=PERF.find(x=>x[0].includes("벽시계"));
     const top=[...PERF].sort((a,b)=>b[1]-a[1]).slice(0,3).map(x=>x[0]+" "+x[1]+"ms").join(" · ");
     const lb=$("#loadbar"); lb.style.display="block";
-    lb.textContent="⏱ 렌더 합계 "+tot+"ms · 최다 소요: "+top;
+    const sv=window.__srv;
+    lb.textContent="⏱ 화면 갱신 "+(wall?wall[1]:tot)+"ms (계산 "+tot+"ms)"
+      +(sv?(" · 서버 "+(sv.hit?"캐시적중 ":"실계산 ")+sv.total_ms+"ms"+(sv.build_ms?(" (읽기 "+sv.build_ms+" · JSON "+sv.json_ms+")"):"")):"")
+      +" · 최다: "+top
+      +(window.__srvT?" · 데이터 생성 "+window.__srvT.slice(11):"");
   }
 }
 function mk(id,cfg){ if(CH[id])CH[id].destroy(); CH[id]=new Chart($("#"+id),cfg); }
@@ -205,8 +210,14 @@ function loadCSV(url,useWorker){return new Promise(res=>{ if(!url){res([]);retur
 function readCache(){ try{ const j=JSON.parse(localStorage.getItem(CK)||"null");
   if(j && j.urls===JSON.stringify(CSV)) return j.db; }catch(e){} return null; }
 function saveCache(){ try{
-  const s=JSON.stringify({urls:JSON.stringify(CSV), t:Date.now(), db:DB});
-  if(s.length<4200000) localStorage.setItem(CK,s); }catch(e){} }
+  const pack=db=>JSON.stringify({urls:JSON.stringify(CSV), t:Date.now(), db});
+  let str=pack(DB);
+  if(str.length>=4600000){
+    const cut=addD(today,-730);
+    str=pack({...DB, sales:DB.sales.filter(r=>r.date>=cut)});
+  }
+  if(str.length<4600000) localStorage.setItem(CK,str);
+}catch(e){} }
 
 function buildDB(sa,pr,ev,se,fx,nv,wx,me){
   DB={sales:[],prod:{},events:[],set:{},fixed:{},naver:[],wx:{},meta:[]};
@@ -224,6 +235,7 @@ function buildDB(sa,pr,ev,se,fx,nv,wx,me){
     const lv=(r.level||"").toLowerCase(); if(lv&&lv!=="campaign")return;
     seen[d]=(seen[d]||0)+num(r.spend);});
   DB.meta=Object.keys(seen).map(d=>({date:d,spend:seen[d]}));
+  DB.minDate=DB.sales.length? DB.sales.reduce((m,r)=>r.date<m?r.date:m, DB.sales[0].date) : today;
 }
 
 async function boot(){
@@ -236,8 +248,14 @@ async function boot(){
   let sa=[],pr=[],ev=[],se=[],fx=[],nv=[],wx=[],me=[];
   if(DATA_URL){
     try{ let t0=performance.now();
-      const r=await fetch(DATA_URL,{redirect:"follow"}); pmark("다운로드",t0);
+      const ac=new AbortController();
+      const kill=setTimeout(()=>ac.abort(),25000);
+      const slow=setTimeout(()=>{lb.style.display="block";
+        lb.textContent="서버가 데이터를 계산하는 중… 정규화 직후 첫 접속은 오래 걸릴 수 있어요";},4000);
+      const r=await fetch(DATA_URL,{redirect:"follow",signal:ac.signal});
+      clearTimeout(kill); clearTimeout(slow); pmark("다운로드",t0);
       t0=performance.now(); const j=await r.json(); pmark("JSON 해석",t0);
+      window.__srvT=j.t||""; window.__srv=j.srv||null;
       sa=tab2obj(j.sales); pr=tab2obj(j.products); ev=tab2obj(j.events); se=tab2obj(j.settings);
       fx=tab2obj(j.fixed_costs); nv=tab2obj(j.naver_daily); wx=tab2obj(j.weather); me=tab2obj(j.meta);
     }catch(e){ console.error("DATA_URL 실패, CSV로 대체",e); }
@@ -289,8 +307,7 @@ function buildControls(){
 }
 
 function windowDates(){
-  const all=DB.sales.map(r=>r.date).sort();
-  const min=all[0]||today, max=today;
+  const min=DB.minDate||today, max=today;
   const from = ST.range? addD(max,-ST.range+1) : min;
   return {from, to:max, min};
 }
@@ -436,8 +453,11 @@ function sparks(){
   const rows=DB.sales.filter(r=>r.st==="정상"&&r.grp==="제품 판매"&&ST.chOn.has(r.ch));
   const perfumes=Object.keys(DB.prod).filter(n=>DB.prod[n].cat==="향수");
   const wkeys=[];for(let i=7;i>=0;i--)wkeys.push(monday(addD(today,-7*i)));
+  const perAll={};
+  rows.forEach(r=>{ if(r.date<wkeys[0])return; const k=monday(r.date);
+    (perAll[r.prod]=perAll[r.prod]||{})[k]=(perAll[r.prod][k]||0)+r.qty; });
   perfumes.forEach(p=>{
-    const per={};rows.forEach(r=>{if(r.prod!==p||r.date<wkeys[0])return;const k=monday(r.date);per[k]=(per[k]||0)+r.qty;});
+    const per=perAll[p]||{};
     const data=wkeys.map(k=>per[k]||0), tot=data.reduce((a,b)=>a+b,0);
     const el=document.createElement("div");el.className="spark";
     el.innerHTML=`<div class="n"><span>${p.replace(" 향수","")}</span><span>${tot}</span></div><canvas width="280" height="46"></canvas>`;
@@ -682,7 +702,7 @@ function productMatrix(){
 /* ---------- 분할 렌더: 패널을 순서대로, 화면 담당 스레드를 막지 않고 ---------- */
 let rq=0;
 function render(){
-  const my=++rq;
+  const my=++rq; const wall0=performance.now();
   const tasks=[["KPI",kpis],["추이",trend],["히트맵",heatmap],["모멘텀",momentum],["광고",ads],
     ["카테고리",()=>stack("cCat",r=>r.cat,true)],
     ["채널",()=>stack("cChan",r=>r.src==="legacy"?"과거 채널":r.ch,false)],
@@ -692,7 +712,7 @@ function render(){
   PERF=PERF.filter(x=>!x[0].startsWith("렌더"));
   (function step(i){
     if(my!==rq) return;
-    if(i>=tasks.length){ perfShow(); return; }
+    if(i>=tasks.length){ pmark("화면 갱신(벽시계)",wall0); perfShow(); return; }
     const t0=performance.now();
     try{ tasks[i][1](); }catch(e){ console.error(tasks[i][0],e); }
     pmark("렌더·"+tasks[i][0],t0);
