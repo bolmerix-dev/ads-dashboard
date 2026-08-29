@@ -181,7 +181,18 @@ const PROV_CUT=addD(today,-1);
 
 let DB={sales:[],prod:{},events:[],set:{},fixed:{},naver:[],wx:{},meta:[]};
 let ST={range:90, chOn:null, built:false};
-let CH={}; let SPARKS=[];
+let CH={}; let SPARKS=[]; let PERF=[];
+function pmark(n,t0){ PERF.push([n, Math.round(performance.now()-t0)]); }
+function perfShow(){
+  if(!PERF.length) return;
+  console.table(PERF.map(([n,ms])=>({단계:n, ms})));
+  if(location.hash.includes("debug")){
+    const tot=PERF.filter(x=>x[0].startsWith("렌더")).reduce((a,x)=>a+x[1],0);
+    const top=[...PERF].sort((a,b)=>b[1]-a[1]).slice(0,3).map(x=>x[0]+" "+x[1]+"ms").join(" · ");
+    const lb=$("#loadbar"); lb.style.display="block";
+    lb.textContent="⏱ 렌더 합계 "+tot+"ms · 최다 소요: "+top;
+  }
+}
 function mk(id,cfg){ if(CH[id])CH[id].destroy(); CH[id]=new Chart($("#"+id),cfg); }
 
 /* ---------- 로드: 워커 파싱 + 캐시 즉시 표시 ---------- */
@@ -224,7 +235,9 @@ async function boot(){
   else { lb.style.display="block"; lb.textContent="데이터 불러오는 중…"; }
   let sa=[],pr=[],ev=[],se=[],fx=[],nv=[],wx=[],me=[];
   if(DATA_URL){
-    try{ const r=await fetch(DATA_URL,{redirect:"follow"}); const j=await r.json();
+    try{ let t0=performance.now();
+      const r=await fetch(DATA_URL,{redirect:"follow"}); pmark("다운로드",t0);
+      t0=performance.now(); const j=await r.json(); pmark("JSON 해석",t0);
       sa=tab2obj(j.sales); pr=tab2obj(j.products); ev=tab2obj(j.events); se=tab2obj(j.settings);
       fx=tab2obj(j.fixed_costs); nv=tab2obj(j.naver_daily); wx=tab2obj(j.weather); me=tab2obj(j.meta);
     }catch(e){ console.error("DATA_URL 실패, CSV로 대체",e); }
@@ -234,7 +247,11 @@ async function boot(){
       loadCSV(CSV.sales,true), loadCSV(CSV.products), loadCSV(CSV.events), loadCSV(CSV.settings),
       loadCSV(CSV.fixed), loadCSV(CSV.naver), loadCSV(CSV.weather), loadCSV(CSV.meta,true)]);
   }
-  if(sa.length){ buildDB(sa,pr,ev,se,fx,nv,wx,me); saveCache(); firstRender(); }
+  if(sa.length){
+    let t0=performance.now(); buildDB(sa,pr,ev,se,fx,nv,wx,me); pmark("가공",t0);
+    (window.requestIdleCallback||setTimeout)(()=>{ const t1=performance.now(); saveCache(); pmark("캐시 저장",t1); },1);
+    firstRender();
+  }
   lb.style.display="none";
   $("#upd").textContent="updated "+today;
 }
@@ -423,10 +440,10 @@ function sparks(){
     const per={};rows.forEach(r=>{if(r.prod!==p||r.date<wkeys[0])return;const k=monday(r.date);per[k]=(per[k]||0)+r.qty;});
     const data=wkeys.map(k=>per[k]||0), tot=data.reduce((a,b)=>a+b,0);
     const el=document.createElement("div");el.className="spark";
-    el.innerHTML=`<div class="n"><span>${p.replace(" 향수","")}</span><span>${tot}</span></div><canvas></canvas>`;
+    el.innerHTML=`<div class="n"><span>${p.replace(" 향수","")}</span><span>${tot}</span></div><canvas width="280" height="46"></canvas>`;
     box.append(el);
     new Chart(el.querySelector("canvas"),{type:"line",data:{labels:wkeys,datasets:[{data,borderColor:INK,borderWidth:1.5,pointRadius:0,fill:false}]},
-      options:{maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:false}},animation:false}});
+      options:{responsive:false,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:false}},animation:false}});
   });
 }
 
@@ -666,14 +683,19 @@ function productMatrix(){
 let rq=0;
 function render(){
   const my=++rq;
-  const tasks=[kpis,trend,heatmap,momentum,ads,
-    ()=>stack("cCat",r=>r.cat,true),
-    ()=>stack("cChan",r=>r.src==="legacy"?"과거 채널":r.ch,false),
-    ()=>stack("cGroup",r=>r.grp,false),
-    dow,weather,sparks,repurchase,profit,decompose,yearly,monthlyTable,productMatrix];
+  const tasks=[["KPI",kpis],["추이",trend],["히트맵",heatmap],["모멘텀",momentum],["광고",ads],
+    ["카테고리",()=>stack("cCat",r=>r.cat,true)],
+    ["채널",()=>stack("cChan",r=>r.src==="legacy"?"과거 채널":r.ch,false)],
+    ["유형",()=>stack("cGroup",r=>r.grp,false)],
+    ["요일",dow],["날씨",weather],["스파크",sparks],["재구매",repurchase],["이익",profit],
+    ["분해",decompose],["연도비교",yearly],["월별표",monthlyTable],["제품매트릭스",productMatrix]];
+  PERF=PERF.filter(x=>!x[0].startsWith("렌더"));
   (function step(i){
-    if(my!==rq || i>=tasks.length) return;
-    try{ tasks[i](); }catch(e){ console.error(e); }
+    if(my!==rq) return;
+    if(i>=tasks.length){ perfShow(); return; }
+    const t0=performance.now();
+    try{ tasks[i][1](); }catch(e){ console.error(tasks[i][0],e); }
+    pmark("렌더·"+tasks[i][0],t0);
     setTimeout(()=>step(i+1),0);
   })(0);
 }
