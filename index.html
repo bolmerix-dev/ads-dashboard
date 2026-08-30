@@ -224,14 +224,23 @@ function loadCSV(url,useWorker){return new Promise(res=>{ if(!url){res([]);retur
     complete:r=>res(r.data||[]),error:()=>res([])});});}
 function readCache(){ try{ const j=JSON.parse(localStorage.getItem(CK)||"null");
   if(j && j.urls===JSON.stringify(CSV)) return j.db; }catch(e){} return null; }
+let CACHE_SIG="";
 function saveCache(){ try{
+  const sig=DB.sales.length+"|"+(DB.minDate||"")+"|"+(DB.sales.length?DB.sales[DB.sales.length-1].date:"");
+  if(sig===CACHE_SIG) return;                       // 내용이 같으면 재저장 생략
   const pack=db=>JSON.stringify({urls:JSON.stringify(CSV), t:Date.now(), db});
-  let str=pack(DB);
-  if(str.length>=4600000){
+  let str;
+  if(DB.sales.length>12000){                        // 크면 처음부터 최근 24개월만 (변환 1회)
     const cut=addD(today,-730);
     str=pack({...DB, sales:DB.sales.filter(r=>r.date>=cut)});
+  } else {
+    str=pack(DB);
+    if(str.length>=4600000){
+      const cut=addD(today,-730);
+      str=pack({...DB, sales:DB.sales.filter(r=>r.date>=cut)});
+    }
   }
-  if(str.length<4600000) localStorage.setItem(CK,str);
+  if(str.length<4600000){ localStorage.setItem(CK,str); CACHE_SIG=sig; }
 }catch(e){} }
 
 function buildDB(sa,pr,ev,se,fx,nv,wx,me){
