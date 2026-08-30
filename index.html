@@ -187,6 +187,16 @@ const PROV_CUT=addD(today,-1);
 let DB={sales:[],prod:{},events:[],set:{},fixed:{},naver:[],wx:{},meta:[]};
 let ST={range:90, chOn:null, built:false};
 let CH={}; let SPARKS=[]; let PERF=[];
+try{ new PerformanceObserver(list=>{ list.getEntries().forEach(e=>{
+  if(e.duration>=200){
+    PERF.push(["⚠롱태스크",Math.round(e.duration)]);
+    console.warn("long task", Math.round(e.duration)+"ms");
+    if(location.hash.includes("debug")){
+      const lb=document.querySelector("#loadbar"); if(lb){ lb.style.display="block";
+        lb.textContent="⚠ 롱태스크 "+Math.round(e.duration)+"ms 감지 · "+lb.textContent.slice(0,90); }
+    }
+  }
+});}).observe({entryTypes:["longtask"]}); }catch(e){}
 function pmark(n,t0){ PERF.push([n, Math.round(performance.now()-t0)]); }
 function perfShow(){
   if(!PERF.length) return;
@@ -316,8 +326,12 @@ function buildControls(){
   document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
     document.querySelectorAll(".tab").forEach(x=>x.classList.remove("on"));
     document.querySelectorAll(".view").forEach(x=>x.classList.remove("on"));
-    t.classList.add("on"); $("#"+t.dataset.v).classList.add("on");
-    requestAnimationFrame(()=>Object.values(CH).forEach(c=>{try{c.resize();}catch(e){}}));
+    t.classList.add("on"); const v=$("#"+t.dataset.v); v.classList.add("on");
+    const charts=[...v.querySelectorAll("canvas")].map(cv=>Chart.getChart(cv)).filter(Boolean);
+    (function rs(i){ if(i>=charts.length) return;
+      try{ charts[i].resize(); }catch(e){}
+      setTimeout(()=>rs(i+1),0);
+    })(0);
   });
 }
 
