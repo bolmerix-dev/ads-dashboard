@@ -147,19 +147,20 @@ th{color:var(--dim);font-weight:600;font-size:12px}
 const DATA_URL = "https://script.google.com/macros/s/AKfycbxLN5q9K65YAXsR-gDBlRSPgXQokfLyD1X0HEgRn5h2drMZLw6NmOQ81WVL1txsBEvFzQ/exec";
 /* 방법 B(예전 방식): 아래 CSV 8개 — DATA_URL이 비어 있을 때만 사용 */
 const CSV = {
-  sales:    "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=1449099634&single=true&output=csv",   // 공개 시트 sales 탭 (필수)
-  products: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=1259382471&single=true&output=csv",
-  events:   "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=1471016121&single=true&output=csv",
-  settings: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=334467403&single=true&output=csv",
-  fixed:    "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=39250495&single=true&output=csv",   // fixed_costs 탭
-  naver:    "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=122929523&single=true&output=csv",   // naver_daily 탭
-  weather:  "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=1952481928&single=true&output=csv",
-  meta:     "https://docs.google.com/spreadsheets/d/e/2PACX-1vQrRmqLnQR_D3BIwY3K34XozqmqSsommCPognSU_WQYB9Dty6Yf9El3DbVEEiDqWzmuYmc3kbR9mBMT/pub?gid=597162935&single=true&output=csv"    // 기존 메타 광고 시트의 meta_daily 탭
+  sales:    "",   // 공개 시트 sales 탭 (필수)
+  products: "",
+  events:   "",
+  settings: "",
+  fixed:    "",   // fixed_costs 탭
+  naver:    "",   // naver_daily 탭
+  weather:  "",
+  meta:     ""    // 기존 메타 광고 시트의 meta_daily 탭
 };
 /* ============================================================== */
 
 const $=s=>document.querySelector(s);
-function showErr(msg){ const lb=document.querySelector("#loadbar");
+let ERRLOCK=false;
+function showErr(msg){ ERRLOCK=true; const lb=document.querySelector("#loadbar");
   if(!lb) return; lb.style.display="block"; lb.style.background="#3a1512"; lb.style.color="#f0b6ae";
   lb.textContent="오류: "+msg+" — 이 줄을 캡처해 보내주세요"; }
 window.addEventListener("error",e=>showErr((e.message||"알 수 없음")+" @"+String(e.filename||"").split("/").pop()+":"+e.lineno));
@@ -741,6 +742,9 @@ function productMatrix(){
 let rq=0;
 function render(){
   const my=++rq; const wall0=performance.now();
+  console.log("RENDER START",{rq:my,range:ST.range,t:new Date().toLocaleTimeString()});
+  if(!ERRLOCK){ const lb=$("#loadbar"); lb.style.display="block";
+    lb.textContent="갱신 중… ("+(ST.range?ST.range+"일":"전체")+")"; }
   const tasks=[["KPI",kpis],["추이",trend],["히트맵",heatmap],["모멘텀",momentum],["광고",ads],
     ["카테고리",()=>stack("cCat",r=>r.cat,true)],
     ["채널",()=>stack("cChan",r=>r.src==="legacy"?"과거 채널":r.ch,false)],
@@ -750,9 +754,11 @@ function render(){
   PERF=PERF.filter(x=>!x[0].startsWith("렌더"));
   (function step(i){
     if(my!==rq) return;
-    if(i>=tasks.length){ pmark("화면 갱신(벽시계)",wall0); perfShow(); return; }
+    if(i>=tasks.length){ pmark("화면 갱신(벽시계)",wall0);
+      if(!ERRLOCK && !location.hash.includes("debug")) $("#loadbar").style.display="none";
+      perfShow(); return; }
     const t0=performance.now();
-    try{ tasks[i][1](); }catch(e){ console.error(tasks[i][0],e); }
+    try{ tasks[i][1](); }catch(e){ console.error("렌더 오류:",tasks[i][0],e); showErr("렌더 "+tasks[i][0]+" 실패: "+(e&&e.message||e)); }
     pmark("렌더·"+tasks[i][0],t0);
     setTimeout(()=>step(i+1),0);
   })(0);
