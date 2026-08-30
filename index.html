@@ -147,14 +147,14 @@ th{color:var(--dim);font-weight:600;font-size:12px}
 const DATA_URL = "https://script.google.com/macros/s/AKfycbxLN5q9K65YAXsR-gDBlRSPgXQokfLyD1X0HEgRn5h2drMZLw6NmOQ81WVL1txsBEvFzQ/exec";
 /* 방법 B(예전 방식): 아래 CSV 8개 — DATA_URL이 비어 있을 때만 사용 */
 const CSV = {
-  sales:    "",   // 공개 시트 sales 탭 (필수)
-  products: "",
-  events:   "",
-  settings: "",
-  fixed:    "",   // fixed_costs 탭
-  naver:    "",   // naver_daily 탭
-  weather:  "",
-  meta:     ""    // 기존 메타 광고 시트의 meta_daily 탭
+  sales:    "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=1449099634&single=true&output=csv",   // 공개 시트 sales 탭 (필수)
+  products: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=1259382471&single=true&output=csv",
+  events:   "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=1471016121&single=true&output=csv",
+  settings: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=334467403&single=true&output=csv",
+  fixed:    "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=39250495&single=true&output=csv",   // fixed_costs 탭
+  naver:    "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=122929523&single=true&output=csv",   // naver_daily 탭
+  weather:  "https://docs.google.com/spreadsheets/d/e/2PACX-1vSwWC31QqoHgSgn_bSzQfg5iCBI9-zfdaeJi8b04SQioxCNZt-E2qv_ob-TfX8XAEVUomrNtxvpc45o/pub?gid=1952481928&single=true&output=csv",
+  meta:     "https://docs.google.com/spreadsheets/d/e/2PACX-1vQrRmqLnQR_D3BIwY3K34XozqmqSsommCPognSU_WQYB9Dty6Yf9El3DbVEEiDqWzmuYmc3kbR9mBMT/pub?gid=597162935&single=true&output=csv"    // 기존 메타 광고 시트의 meta_daily 탭
 };
 /* ============================================================== */
 
@@ -178,7 +178,7 @@ const num=v=>{const n=parseFloat(String(v??"").replace(/[^0-9.\-]/g,""));return 
 const won=v=>{v=Math.round(v);const a=Math.abs(v);
   if(a>=1e8)return (v/1e8).toFixed(1)+"억"; if(a>=1e4)return Math.round(v/1e4).toLocaleString()+"만"; return v.toLocaleString();};
 const pct=v=>isFinite(v)?(v*100).toFixed(1)+"%":"–";
-const d2s=d=>d.toISOString().slice(0,10);
+const d2s=d=>{const y=d.getFullYear(),m=("0"+(d.getMonth()+1)).slice(-2),dd=("0"+d.getDate()).slice(-2);return y+"-"+m+"-"+dd;};
 const addD=(s,n)=>{const d=new Date(s+"T00:00:00");d.setDate(d.getDate()+n);return d2s(d);};
 const monday=s=>{const d=new Date(s+"T00:00:00");const k=(d.getDay()+6)%7;d.setDate(d.getDate()-k);return d2s(d);};
 const ym=s=>s.slice(0,7);
@@ -450,7 +450,7 @@ function trend(){
   const buckets={};
   rows.forEach(r=>{const k=key(r.date);buckets[k]=buckets[k]||{rev:0,qty:0};
     buckets[k].rev+=r.amt*v; if(r.grp==="제품 판매")buckets[k].qty+=r.qty;});
-  const keys=[]; for(let d=key(from);d<=to;d=addD(d,daily?1:7)) keys.push(d);
+  const keys=[]; for(let d=key(from),g=0;d<=to&&g<4000;d=addD(d,daily?1:7),g++) keys.push(d);
   const rev=keys.map(k=>buckets[k]?buckets[k].rev:0);
   const qty=keys.map(k=>buckets[k]?buckets[k].qty:0);
   const ma=rev.map((_,i)=>{const s=rev.slice(Math.max(0,i-3),i+1);return s.reduce((a,b)=>a+b,0)/s.length;});
@@ -551,7 +551,7 @@ function stack(id, dim, pctMode){
 /* ---------- 광고 ---------- */
 function ads(){
   const v=vat(), rows=F(), {from,to}=windowDates();
-  const wk=[];for(let d=monday(from);d<=to;d=addD(d,7))wk.push(d);
+  const wk=[];for(let d=monday(from),g=0;d<=to&&g<1000;d=addD(d,7),g++)wk.push(d);
   const rev={},mt={},nv2={};
   rows.forEach(r=>{const k=monday(r.date);rev[k]=(rev[k]||0)+r.amt*v;});
   DB.meta.forEach(x=>{if(x.date>=from&&x.date<=to){const k=monday(x.date);mt[k]=(mt[k]||0)+x.spend*v;}});
