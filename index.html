@@ -269,6 +269,7 @@ function buildDB(sa,pr,ev,se,fx,nv,wx,me){
   DB.naver=nv.map(r=>({date:String(r["날짜"]||r.date||"").slice(0,10),spend:num(r["광고비"]||r.spend),
     imp:num(r["노출수"]||r["노출"]||r.imp),clk:num(r["클릭수"]||r["클릭"]||r.clk),
     conv:num(r["전환수"]||r["전환"]||r.conv),crev:num(r["전환매출"]||r.crev)})).filter(r=>/^\d{4}/.test(r.date));
+  { const last={}; DB.naver.forEach(r=>{last[r.date]=r;}); DB.naver=Object.values(last); } // 같은 날짜 중복 시 마지막 행만
   wx.forEach(r=>{const d=String(r.date||"").slice(0,10);if(d)DB.wx[d]={tmax:num(r.tmax),rain:num(r.rain_mm),code:num(r.code)};});
   const seen={};
   me.forEach(r=>{const d=String(r.date||"").slice(0,10);if(!/^\d{4}/.test(d))return;
