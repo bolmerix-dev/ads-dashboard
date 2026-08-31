@@ -47,6 +47,10 @@ h1 em{font-style:normal;color:var(--dim);font-weight:400;font-size:14px}
 .d.up{color:var(--green);background:rgba(143,191,131,.12)}
 .d.dn{color:var(--red);background:rgba(224,86,74,.12)}
 .up{color:var(--green)} .dn{color:var(--red)}
+.ostats{display:flex;gap:30px;margin:0 0 10px;font-size:13px;color:var(--dim);flex-wrap:wrap}
+.ostats b{font-family:var(--mono);font-size:22px;color:var(--ink);margin-left:9px;font-weight:600}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--ink);margin-right:7px;vertical-align:middle}
+.dot.dashed{background:none;border:2px dotted var(--cyan)}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:900px){.grid{grid-template-columns:1fr}body{font-size:14px}}
 .panel{border:1px solid var(--line);background:var(--panel);padding:14px 15px 15px;min-width:0;border-radius:6px}
@@ -112,6 +116,9 @@ th{color:var(--dim);font-weight:600;font-size:12px}
   <div class="kpis" id="kpis"></div>
 
   <div class="view on" id="v1"><div class="grid">
+    <div class="panel full"><h2>주문 통계 <small id="osCap"></small></h2>
+      <div class="ostats"><div><span class="dot dashed"></span>주문 건<b id="osCnt">–</b></div><div><span class="dot"></span>주문 금액<b id="osAmt">–</b></div></div>
+      <div class="ch" style="height:240px"><canvas id="cOrders"></canvas></div></div>
     <div class="panel full"><h2>매출 · 판매수량 추이 <small id="trendCap"></small><span class="sum" id="trendSum"></span></h2><div class="ch tall"><canvas id="cTrend"></canvas></div></div>
     <div class="panel full"><h2>제품 × 날짜 <small>일별 · 최근 6주</small>
       <span class="sum"><button class="chip on" id="hmQty" style="padding:3px 10px;font-size:12px">수량</button>
@@ -148,6 +155,7 @@ th{color:var(--dim);font-weight:600;font-size:12px}
   <div class="view" id="v3"><div class="grid">
     <div class="panel"><h2>재구매 <small id="repCap"></small></h2><div class="ch" style="height:180px"><canvas id="cRep"></canvas></div><div id="cohort" style="margin-top:10px;overflow:auto"></div></div>
     <div class="panel"><h2>이익 <small>총이익 / 기여이익 / 영업이익</small></h2><div class="ch"><canvas id="cProfit"></canvas></div><div class="note" id="profitNote"></div></div>
+    <div class="panel full"><h2>채널별 재구매 <small>기간·채널 필터 적용 · 첫 구매는 전 채널·전 기간 기준</small></h2><div id="chRep" style="overflow:auto"></div></div>
     <div class="panel full"><h2>제품 수익성 <small>기간·채널 필터 적용 · 광고비 제외(제품 귀속 불가)</small></h2><div id="pProfit" style="overflow:auto"></div></div>
     <div class="panel full"><h2>변화 분해 <small id="diffCap"></small></h2><div id="diff"></div></div>
   </div></div>
@@ -266,10 +274,10 @@ function buildDB(sa,pr,ev,se,fx,nv,wx,me){
   DB.events=ev.map(r=>({s:String(r["시작일"]||r.start||"").slice(0,10),type:r["유형"]||r.type||"",name:r["이름"]||r.name||""})).filter(e=>/^\d{4}-\d{2}-\d{2}$/.test(e.s));
   se.forEach(r=>{const k=r["항목"]||r.key;if(k)DB.set[k]=num(r["값"]||r.value);});
   fx.forEach(r=>{const k=String(r["연월"]||"").slice(0,7);if(k)DB.fixed[k]=(DB.fixed[k]||0)+num(r["금액(VAT포함)"]||r["금액"]);});
-  DB.naver=nv.map(r=>({date:String(r["날짜"]||r.date||"").slice(0,10),spend:num(r["광고비"]||r.spend),src:String(r["매체"]||r.source||"").trim()||"네이버",
+  DB.naver=nv.map(r=>({date:String(r["날짜"]||r.date||"").slice(0,10),spend:num(r["광고비"]||r.spend),src:String(r["매체"]||r.source||"").trim()||"네이버",camp:String(r["캠페인"]||"").trim(),
     imp:num(r["노출수"]||r["노출"]||r.imp),clk:num(r["클릭수"]||r["클릭"]||r.clk),
     conv:num(r["전환수"]||r["전환"]||r.conv),crev:num(r["전환매출"]||r.crev)})).filter(r=>/^\d{4}/.test(r.date));
-  { const last={}; DB.naver.forEach(r=>{last[r.date+"|"+r.src]=r;}); DB.naver=Object.values(last); } // 같은 날짜·매체 중복 시 마지막 행만
+  { const last={}; DB.naver.forEach(r=>{last[r.date+"|"+r.src+"|"+r.camp]=r;}); DB.naver=Object.values(last); } // 같은 날짜·매체·캠페인 중복 시 마지막 행만
   wx.forEach(r=>{const d=String(r.date||"").slice(0,10);if(d)DB.wx[d]={tmax:num(r.tmax),rain:num(r.rain_mm),code:num(r.code)};});
   const seen={};
   me.forEach(r=>{const d=String(r.date||"").slice(0,10);if(!/^\d{4}/.test(d))return;
@@ -438,7 +446,8 @@ function kpis(){
   const pRev=rows.filter(r=>r.grp==="제품 판매").reduce((x,r)=>x+r.amt,0)*v;
   const asp=pQty? pRev/pQty : 0;
   const keyed=c.consumer.filter(r=>r.key);
-  const firstBuy={}; DB.sales.forEach(r=>{ if(r.key&&r.st==="정상"&&(!firstBuy[r.key]||r.date<firstBuy[r.key]))firstBuy[r.key]=r.date; });
+  const firstBuy={}; DB.sales.forEach(r=>{ if(r.key&&r.st==="정상"&&r.grp==="제품 판매"&&r.ch!=="도매"&&r.ch!=="쿠팡(로켓)"
+    &&(!firstBuy[r.key]||r.date<firstBuy[r.key]))firstBuy[r.key]=r.date; });
   const repAmt=keyed.filter(r=>firstBuy[r.key]<r.date).reduce((x,r)=>x+r.amt,0);
   const keyAmt=keyed.reduce((x,r)=>x+r.amt,0);
   const months=new Set(rows.map(r=>ym(r.date)));
@@ -489,6 +498,29 @@ const markPlug={id:"marks",afterDatasetsDraw(ch,_,o){
   ctx.restore();
 }};
 Chart.register(markPlug);
+
+/* ---------- 주문 통계 (식스샵 스타일) ---------- */
+function orderStats(){
+  const v=vat(), {from,to}=windowDates();
+  const rows=DB.sales.filter(r=>r.st==="정상"&&r.grp==="제품 판매"&&ST.chOn.has(r.ch)&&r.ch!=="도매"&&r.ch!=="쿠팡(로켓)"&&r.src!=="legacy"&&r.date>=from&&r.date<=to);
+  const len=Math.round((new Date(to)-new Date(from))/86400000)+1;
+  const weekly=len>93; const key=weekly?monday:(d=>d);
+  const keys=[]; for(let d=key(from),g=0; d<=to&&g<4000; d=addD(d,weekly?7:1),g++) keys.push(d);
+  const amt={},ord={};
+  rows.forEach(r=>{const k=key(r.date); amt[k]=(amt[k]||0)+r.amt*v; (ord[k]=ord[k]||new Set()).add(r.ch+"|"+r.order);});
+  const A=keys.map(k=>amt[k]||0), O=keys.map(k=>ord[k]?ord[k].size:0);
+  const totA=A.reduce((a,b)=>a+b,0), allOrd=new Set(rows.map(r=>r.ch+"|"+r.order)).size;
+  $("#osCap").textContent=from+" ~ "+to+(weekly?" · 주 단위":" · 일 단위")+" · 소비자 주문 기준(도매·로켓 제외)";
+  $("#osCnt").textContent=allOrd.toLocaleString()+"건";
+  $("#osAmt").textContent=Math.round(totA).toLocaleString()+"원";
+  mk("cOrders",{type:"line",data:{labels:keys.map(k=>k.slice(5).replace("-","/")),datasets:[
+    {label:"주문 금액",data:A,borderColor:INK,backgroundColor:"rgba(242,240,233,0.07)",fill:true,tension:0.4,borderWidth:2.2,pointRadius:0,pointHoverRadius:5,yAxisID:"y"},
+    {label:"주문 건",data:O,borderColor:CYAN,borderDash:[3,4],tension:0.4,borderWidth:2,pointRadius:0,pointHoverRadius:5,yAxisID:"y2"}]},
+   options:{maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
+     plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.dataset.label+": "+(c.dataset.yAxisID==="y2"?c.raw+"건":Math.round(c.raw).toLocaleString()+"원")}}},
+     scales:{y:{ticks:{callback:won}},y2:{position:"right",grid:{display:false},ticks:{precision:0,callback:v2=>v2+"건"}},
+             x:{ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:8}}}}});
+}
 
 /* ---------- 추이 ---------- */
 function trend(){
@@ -798,6 +830,52 @@ function profit(){
     +($("#tVat").checked?" · 부가세 차감(÷1.1) 적용":"")+($("#tInc").checked?" · 소득세 유효세율 적용":"");
 }
 
+/* ---------- 채널별 재구매 ---------- */
+function channelRepurchase(){
+  const v=vat(), {from,to}=windowDates();
+  const ok=r=>r.st==="정상"&&r.grp==="제품 판매"&&r.ch!=="도매"&&r.ch!=="쿠팡(로켓)";
+  const datesByKey={};
+  DB.sales.forEach(r=>{ if(!ok(r)||!r.key)return; (datesByKey[r.key]=datesByKey[r.key]||new Set()).add(r.date); });
+  const firstByKey={};
+  Object.keys(datesByKey).forEach(k=>{ const a=[...datesByKey[k]].sort(); datesByKey[k]=a; firstByKey[k]=a[0]; });
+  const m={};
+  DB.sales.forEach(r=>{ if(!ok(r)||r.date<from||r.date>to||!ST.chOn.has(r.ch))return;
+    const o=(m[r.ch]=m[r.ch]||{rows:0,keyed:0,amt:0,repAmt:0,ks:new Set(),reps:new Set(),ev:new Set(),quick:0});
+    o.rows++; o.amt+=r.amt*v;
+    if(!r.key)return;
+    o.keyed++; o.ks.add(r.key);
+    if(firstByKey[r.key]<r.date){
+      o.reps.add(r.key); o.repAmt+=r.amt*v;
+      const evk=r.key+"|"+r.date;
+      if(!o.ev.has(evk)){ o.ev.add(evk);
+        const a=datesByKey[r.key], i=a.indexOf(r.date);
+        if(i>0 && Math.round((new Date(a[i]+"T00:00:00")-new Date(a[i-1]+"T00:00:00"))/86400000)<=7) o.quick++; }
+    }
+  });
+  const chs=Object.keys(m).sort((a,b)=>m[b].amt-m[a].amt);
+  if(!chs.length){$("#chRep").innerHTML="<div class='note'>표시할 데이터가 없습니다</div>";return;}
+  const T={rows:0,keyed:0,amt:0,repAmt:0,ks:new Set(),reps:new Set(),ev:new Set(),quick:0};
+  let h="<table><tr><th>채널</th><th>식별 고객</th><th>재구매 고객</th><th>재구매율</th><th>재구매 매출 비중</th><th>7일 내 재구매</th><th>키 커버리지</th></tr>";
+  const line=(nm,o)=>{
+    const rr=o.ks.size? o.reps.size/o.ks.size*100 : NaN;
+    const ra=o.amt? o.repAmt/o.amt*100 : NaN;
+    const qk=o.ev.size? o.quick/o.ev.size*100 : NaN;
+    const cov=o.rows? o.keyed/o.rows*100 : 0;
+    const covWarn=cov<60? " <span class='dn'>⚠</span>":"";
+    return `<tr><td>${nm}</td><td>${o.ks.size.toLocaleString()}</td><td>${o.reps.size.toLocaleString()}</td>`
+      +`<td>${isFinite(rr)?rr.toFixed(1)+"%":"–"}</td><td>${isFinite(ra)?ra.toFixed(1)+"%":"–"}</td>`
+      +`<td class="${isFinite(qk)&&qk>=40?'dn':''}">${isFinite(qk)?qk.toFixed(0)+"%":"–"}</td>`
+      +`<td>${cov.toFixed(0)}%${covWarn}</td></tr>`;
+  };
+  chs.forEach(c=>{const o=m[c]; T.rows+=o.rows;T.keyed+=o.keyed;T.amt+=o.amt;T.repAmt+=o.repAmt;T.quick+=o.quick;
+    o.ks.forEach(k=>T.ks.add(k)); o.reps.forEach(k=>T.reps.add(k)); o.ev.forEach(e=>T.ev.add(e));
+    h+=line(c,o);});
+  h+=line("<b>합계</b>",T);
+  $("#chRep").innerHTML=h+"</table><div class='note'>재구매 = 첫 구매일보다 <b>뒤 날짜</b>의 구매 · 같은 날 여러 건·여러 상품은 1회로 처리 · "
+    +"7일 내 재구매가 높으면 실제 재구매보다 추가 주문·재발송 성격 · 키 커버리지 60% 미만(⚠)이면 그 채널 수치는 참고용 · "
+    +"쿠팡·토스는 이름+주소 추정 키(같은 집·회사로 보내면 한 사람으로 합쳐질 수 있음)</div>";
+}
+
 /* ---------- 제품 수익성 ---------- */
 function productProfit(){
   const v=vat(), {from,to}=windowDates();
@@ -917,11 +995,11 @@ function render(){
   console.log("RENDER START",{rq:my,range:ST.range,t:new Date().toLocaleTimeString()});
   if(!ERRLOCK){ const lb=$("#loadbar"); lb.style.display="block";
     lb.textContent="갱신 중… ("+(ST.custom?(ST.custom.from.slice(5)+"~"+ST.custom.to.slice(5)):(ST.range?ST.range+"일":"전체"))+")"; }
-  const tasks=[["KPI",kpis],["추이",trend],["히트맵",heatmap],["모멘텀",momentum],["광고",ads],["일별표",dailyTable],
+  const tasks=[["KPI",kpis],["주문통계",orderStats],["추이",trend],["히트맵",heatmap],["모멘텀",momentum],["광고",ads],["일별표",dailyTable],
     ["카테고리",()=>stack("cCat",r=>r.cat,true)],
     ["채널",()=>stack("cChan",r=>r.src==="legacy"?"과거 채널":r.ch,false)],
     ["유형",()=>stack("cGroup",r=>r.grp,false)],["채널수익성",channelProfit],["채널제품",chanProd],
-    ["요일",dow],["날씨",weather],["스파크",sparks],["재구매",repurchase],["이익",profit],["제품수익성",productProfit],
+    ["요일",dow],["날씨",weather],["스파크",sparks],["재구매",repurchase],["채널재구매",channelRepurchase],["이익",profit],["제품수익성",productProfit],
     ["분해",decompose],["연도비교",yearly],["월별표",monthlyTable],["제품매트릭스",productMatrix]];
   PERF=PERF.filter(x=>!x[0].startsWith("렌더"));
   (function step(i){
