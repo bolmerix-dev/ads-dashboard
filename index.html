@@ -278,6 +278,8 @@ function buildDB(sa,pr,ev,se,fx,nv,wx,me){
     imp:num(r["노출수"]||r["노출"]||r.imp),clk:num(r["클릭수"]||r["클릭"]||r.clk),
     conv:num(r["전환수"]||r["전환"]||r.conv),crev:num(r["전환매출"]||r.crev)})).filter(r=>/^\d{4}/.test(r.date));
   { const last={}; DB.naver.forEach(r=>{last[r.date+"|"+r.src+"|"+r.camp]=r;}); DB.naver=Object.values(last); } // 같은 날짜·매체·캠페인 중복 시 마지막 행만
+  { const md={}; DB.meta.forEach(x=>{if(x.spend)md[x.date]=1;});   // 메타 시트에 있는 날짜의 수기 '메타' 행은 제외(이중 계상 방지)
+    DB.naver=DB.naver.filter(r=>!(/메타|meta/i.test(r.src)&&md[r.date])); }
   wx.forEach(r=>{const d=String(r.date||"").slice(0,10);if(d)DB.wx[d]={tmax:num(r.tmax),rain:num(r.rain_mm),code:num(r.code)};});
   const seen={};
   me.forEach(r=>{const d=String(r.date||"").slice(0,10);if(!/^\d{4}/.test(d))return;
